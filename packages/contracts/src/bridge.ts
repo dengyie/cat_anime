@@ -59,7 +59,7 @@ export type PetPackBridgeOperation = (typeof PET_PACK_BRIDGE_OPERATIONS)[number]
 export const backendToShellSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("pet.command.request"),
-    operation: z.enum(["say", "playAction", "setEvent"]),
+    operation: z.enum(["say", "playAction", "setEvent", "getActions", "reloadActions"]),
     payload: z.record(z.string(), z.unknown()),
   }).strict(),
   z.object({ type: z.literal("pet.say"), text: z.string(), durationMs: z.number().int().positive().optional() }),

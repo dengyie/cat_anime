@@ -162,6 +162,10 @@ const createOpenPetRuntime = ({
       return catalogSidecarBridge.handle(request)
     },
     onPetPackRequest: (request) => ipcRuntimeHelpers.handlePetPackRequest(request),
+    onActionsDiagnostics: () => triggerRuleRuntimeService?.getDiagnostics?.() || {
+      currentState: { actionId: '' },
+      decisions: []
+    },
     onReady: async () => {
       try {
         await settingsSidecarBridge?.hydrate()

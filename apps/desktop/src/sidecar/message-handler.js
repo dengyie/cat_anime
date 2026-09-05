@@ -161,7 +161,7 @@ function parseEnvelope(raw) {
 	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body: normalizedBody } }
 }
 
-function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, onPetPackRequest, productionService } = {}) {
+function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, onPetPackRequest, onActionsDiagnostics, productionService } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
@@ -213,12 +213,20 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 							actionId: body.payload.actionId,
 							source: body.payload.source,
 						})
-						else result = await petService?.setEvent?.({
+						else if (body.operation === "setEvent") result = await petService?.setEvent?.({
 							type: body.payload.type,
 							message: body.payload.message,
 							ttlMs: body.payload.ttlMs,
 							source: body.payload.source,
 						})
+						else if (body.operation === "getActions") result = {
+							animations: await petService?.getPreviewAnimations?.(),
+							triggerRuntimeDiagnostics: await onActionsDiagnostics?.(),
+						}
+						else result = {
+							animations: await petService?.reloadAnimations?.(),
+							triggerRuntimeDiagnostics: await onActionsDiagnostics?.(),
+						}
 						send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: { type: "pet.command.result", ok: true, result } })
 					} catch (error) {
 						send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: { type: "pet.command.result", ok: false, error: sanitizeLogText(error?.message || String(error)) } })
