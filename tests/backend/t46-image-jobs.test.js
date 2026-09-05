@@ -74,6 +74,56 @@ test("T46 runner publishes image progress as SSE-compatible job events", async (
 	}
 })
 
+test("T42 actions import job enters the runner and emits SSE lifecycle events", async () => {
+	const [{ createJobsRepository }, { createQueue }, { createRunner }, { migrate }, { openDatabase }] = await Promise.all([
+		import("../../services/backend/store/repositories/jobs.js"),
+		import("../../services/backend/jobs/queue.js"),
+		import("../../services/backend/jobs/runner.js"),
+		import("../../services/backend/store/migrate.js"),
+		import("../../services/backend/store/db.js"),
+	])
+	const db = await openDatabase({ file: ":memory:" })
+	try {
+		migrate({ db })
+		const repo = createJobsRepository({ db })
+		const queue = createQueue({ repo, tickMs: 60_000 })
+		const events = []
+		const calls = []
+		const runner = createRunner({
+			repo,
+			queue,
+			progress: ({ onEmit }) => ({ report: onEmit, flush: () => {}, reset: () => {} }),
+			emit: (name, payload) => events.push({ name, payload }),
+			handlers: {
+				"actions.import-frames": async ({ job, report, signal }) => {
+					calls.push(job.input)
+					assert.equal(signal.aborted, false)
+					report({ phase: "generating", percent: 25, message: "Generating action sprites" })
+					return { actionId: job.input.actionId, imported: true }
+				},
+			},
+		})
+		const inserted = repo.insert({
+			id: "actions-import-frames:wave:1",
+			kind: "actions.import-frames",
+			input: { path: "/tmp/frames", actionId: "wave", label: "Wave" },
+			resourceKey: "actions:wave",
+		})
+		queue.enqueue(inserted.id)
+		const finished = await runner.run(queue.next())
+		assert.equal(finished.status, "succeeded")
+		assert.deepEqual(calls, [{ path: "/tmp/frames", actionId: "wave", label: "Wave" }])
+		assert.deepEqual(events.map(({ name }) => name), ["job.progress", "job.succeeded"])
+		assert.equal(events[0].payload.jobId, inserted.id)
+		assert.equal(events[0].payload.kind, "actions.import-frames")
+		assert.equal(events[0].payload.phase, "generating")
+		assert.equal(events[1].payload.result.actionId, "wave")
+		queue.stop()
+	} finally {
+		db.close()
+	}
+})
+
 test("T46 image commit rejects symlink escapes and rolls back partial multi-file staging", async () => {
 	const root = tempDir("openpet-t46-data-")
 	const tmp = tempDir("openpet-t46-tmp-")

@@ -13,7 +13,7 @@ describe("T19 actions", () => {
 		const [{ createRouter }, routes, { createActionService }, contracts] = await Promise.all([
 			import("../../services/backend/http/router.js"), import("../../services/backend/routes/actions.js"), import("../../services/backend/domains/actions.js"), import("@openpet/contracts"),
 		])
-		const root = temp(); fs.mkdirSync(path.join(root, "cat_anime"), { recursive: true }); fs.writeFileSync(path.join(root, "cat_anime", "animations.json"), JSON.stringify({ actions: [{ id: "idle" }] }))
+		const root = temp(); fs.mkdirSync(path.join(root, "cat_anime"), { recursive: true }); fs.writeFileSync(path.join(root, "cat_anime", "animations.json"), JSON.stringify({ defaultAction: "idle", clickAction: "idle", actions: [{ id: "idle", label: "Idle", kind: "idle", sprite: "sprites/idle.png" }], triggerProposalInbox: [], triggerRules: [] }))
 		const events = []; const actions = createActionService({ root, emit: (name) => events.push(name) }); const router = createRouter({ basePath: "/api/v1" }); routes.registerActionRoutes(router, { actions })
 		assert.deepEqual(router.routes(), routes.ACTION_ROUTES.map((entry) => { const [method, route] = entry.split(" "); return `${method} /api/v1${route}` }))
 		actions.update("idle", { label: "Idle" }); assert.deepEqual(events, [contracts.EVENT_ACTIONS_CHANGED])

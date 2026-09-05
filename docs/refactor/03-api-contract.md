@@ -1,6 +1,6 @@
 # 03 · API 契约与通信协议
 
-> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 140 个 IPC 通道的去向已在本篇逐域定义。
+> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 127 个 IPC 通道的去向已在本篇逐域定义。
 
 ## 1. 协议基础
 
@@ -96,7 +96,7 @@
 
 **专用业务码**(搭配 400/409/423):`PLUGIN_MANIFEST_INVALID`、`PLUGIN_ALREADY_RUNNING`、`PLUGIN_NATIVE_NOT_APPROVED`、`PET_PACK_INCOMPATIBLE`、`ACTION_FRAMES_MISSING`、`AI_KEY_NOT_CONFIGURED`、`JOB_NOT_CANCELABLE`、`MIGRATION_REQUIRED`。
 
-## 3. 140 个通道的去向总表
+## 3. 127 个通道的去向总表
 
 | 域 | 通道数 | 留 IPC | 迁 HTTP | 备注 |
 | --- | --- | --- | --- | --- |
@@ -104,7 +104,7 @@
 | `PET_CHAT_*` | 8 | 8 | 0 | 窗口控制,内部转发后端 |
 | `PET_BUBBLE_CHAT_*` | 11 | 11 | 0 | 窗口控制 |
 | `SETTINGS_*` | 5 | 2 | 3 | `OPEN`/`CLOSE` 留(开窗); `GET`/`SAVE` 已在 T41 退役 |
-| `ACTIONS_*` | 13 | 1 | 12 | `INSPECT_FRAMES` 弹框部分留 IPC,路径校验走 HTTP(两段式);其余 12 条当前登记 `blocked:T42`,待完整 view/副作用契约对等后切换 |
+| `ACTIONS_*` | 0 | 0 | 0 | Actions 历史通道已全部退休；Control Center 通过 Backend HTTP |
 | `PET_PACKS_*` | 1 | 1 | 0 | 仅 `INSPECT_DIRECTORY` 保留原生弹框；其余 8 个通道已在 T42 同一提交退休 |
 | AI 总域 | 37 | 0 | 37 | 全迁 |
 | `PLUGINS_*` | 29 | 6 | 23 | `OPEN_DASHBOARD`、`INSPECT_PACKAGE`、QQ/WeCom 凭据保存/清除留 |
@@ -112,9 +112,9 @@
 | `SERVICE_*` | 7 | 0 | 7 | 全迁 |
 | `ABOUT_*` | 0 | 0 | 0 | `about:get-info` / `about:check-updates` 已在 T42 退休；能力改由 Backend HTTP/Job 提供 |
 | `CATALOG_*` | 0 | 0 | 0 | 6 个 Catalog 通道已在 T42 同一提交中退休；HTTP 路由仍由 Backend 提供 |
-| **合计** | **140** | **45** | **95** | |
+| **合计** | **127** | **44** | **83** | |
 
-> **实现登记（T42，评审 v1.0）**：本表只统计当前 IPC 通道；后端支撑模块不会另增 IPC 通道。`services/backend/domains/local-http.js` 承接 `SERVICE_*` 的 7 个迁移通道，`services/backend/jobs/dispatcher.js` 只负责 §6 Job 入队/派发与 `job.created` 推送，二者均已包含在上面的既有行中。`settings:get`、`settings:save`、`about:get-info`、`about:check-updates`、6 个 Catalog 通道与 8 个 Pet Pack 通道已退休，不再计入当前清单。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**140 = 45 留 IPC + 95 迁 HTTP**。
+> **实现登记（T42 Actions）**：本表只统计当前 IPC 通道；后端支撑模块不会另增 IPC 通道。Actions 的 13 个历史通道均已由 `/actions*` HTTP 路由承接，`actions.import-frames` 通过共享 Jobs runner 执行并以 `pet.actions-changed` SSE 发布变更。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**127 = 44 留 IPC + 83 迁 HTTP**。
 
 ## 4. 路由表
 
@@ -159,7 +159,7 @@
 
 ### 4.4 动作
 
-> **当前实现差异（T42 实测）**：下表是目标 HTTP 映射，不等于已具备语义对等。`GET /actions` 仍返回简化 `ActionEntry[]`，而 Control Center 需要完整 `ActionsConfigViewState`；提案/规则接口、帧选择与导入也尚未复现 Shell 的选择句柄、持久化和 PetService/动画/聊天副作用。因此除原生 `ACTIONS_INSPECT_FRAMES` 外的 12 条通道在 15 篇台账中保持 `blocked:T42`，不得先删 IPC/preload。
+> **T42 Actions 实现登记**：Actions HTTP 域复用 host `ActionService` 的配置、提案和规则校验；帧导入写入共享 manifest 并进入 `actions.import-frames` Job，runner 发布进度与 `pet.actions-changed` SSE。Control Center Actions pane 不再调用 action preload IPC。
 
 | 方法 | 路径 | 源 IPC |
 | --- | --- | --- |
@@ -177,7 +177,7 @@
 | PATCH | `/actions/triggers/rules/{id}` | `ACTIONS_UPDATE_TRIGGER_RULE` |
 | DELETE | `/actions/triggers/rules/{id}` | `ACTIONS_DELETE_TRIGGER_RULE` |
 
-† 本表 13 行 ≠ §3 的「12 迁 HTTP」。`ACTIONS_INSPECT_FRAMES` 是**两段式通道**:弹框部分留在 Shell IPC(计入那 1 个「留 IPC」),路径校验部分落在这条 HTTP 路由上。因此它在两边各算一次,总数仍为 13。
+本表 13 行全部对应 HTTP；`POST /actions/frames/import` 返回 202 并通过 Jobs/SSE 提供实际执行状态。
 
 ### 4.5 宠物包
 

@@ -88,9 +88,12 @@ describe("T42 Pet Packs cutover boundary", () => {
 			"activate",
 			"remove",
 		]) assert.match(hook, new RegExp(`petPackApi\\.${call}\\(`), call)
-		for (const actionsCall of ["getActions", "saveActionsConfig", "previewActionTriggerProposal", "clearActionFrameSelection"]) {
-			assert.match(hook, new RegExp(`api\\.${actionsCall}\\(`), actionsCall)
+		for (const actionsCall of ["getActions", "saveActionsConfig"]) {
+			assert.match(hook, new RegExp(`actionsHttpApi\\.${actionsCall}\\(`), actionsCall)
 		}
+		assert.match(hook, /actionsHttpApi\.previewActionTriggerProposal\(/)
+		assert.match(hook, /actionsHttpApi\.clearActionFrameSelection\(/)
+		assert.doesNotMatch(hook, /api\.(getActions|saveActionsConfig|previewActionTriggerProposal|clearActionFrameSelection)\(/)
 	})
 
 	it("retires Pet Packs business IPC while retaining only the native directory picker", () => {

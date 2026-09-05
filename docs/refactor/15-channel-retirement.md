@@ -1,10 +1,10 @@
 # 15 · IPC 通道退役台账
 
-> v1.3 · 2026-09-05 · T42 · 以 `src/shared/ipc-channels.ts` 为当前清单
+> v1.4 · 2026-09-05 · T42 Actions · 以 `src/shared/ipc-channels.ts` 为当前清单
 
-本台账登记当前 140 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
+本台账登记当前 127 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
 
-当前台账由 134 个 `ipcMainService.handle/on` 注册和 6 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
+当前台账由 121 个 `ipcMainService.handle/on` 注册和 6 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
 
 T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `keep ≤ 41`，因此新增的 QQ/WeCom 四个 host-secret 通道登记为 `blocked:T44`，而不是伪装成长期 keep。T41 及后续任务可把已删除常量保留为 `retired` 历史行，并在 Retired by 列记录提交 SHA；历史行不计入当前通道对账或 keep 上限。
 
@@ -12,14 +12,14 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 
 | Scope | Count |
 | --- | ---: |
-| Current IPC constants | 140 |
-| Current direct registrations | 134 |
+| Current IPC constants | 127 |
+| Current direct registrations | 121 |
 | Current event-only channels | 6 |
-| Current keep | 41 |
+| Current keep | 40 |
 | Current cutover | 29 |
-| Current blocked | 70 |
+| Current blocked | 58 |
 | Current dead | 0 |
-| Historical retired | 18 |
+| Historical retired | 31 |
 
 ## Ledger
 
@@ -67,19 +67,19 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `settings:preview-scale` | `blocked:T41` | `POST /settings/preview-scale` — unavailable fallback | `src/main/ipc/register-settings-ipc.js` | Route registration receives no handler from the backend composition root, so it returns `BACKEND_UNAVAILABLE`; T41 must bridge the host preview side effect | — |
 | `settings:close` | `keep` | `IPC-only (native/window)` | `src/main/ipc/register-settings-ipc.js` | Window/native IPC remains the intended boundary | — |
 | `settings:changed` | `blocked:T41` | `SSE settings.changed` — renderer/bootstrap parity pending | `control-center-preload.js` | SSE only publishes changed paths and version after backend PATCH; IPC still synchronizes pet-renderer settings and multiplexes backend bootstrap updates, which T41 must replace before retirement | — |
-| `actions:get` | `blocked:T42` | `GET /actions` — incompatible view state | `src/main/ipc.js` | Backend returns `ActionEntry[]`, while Shell/Control Center require `ActionsConfigViewState` with defaults, proposals, rules, and trigger diagnostics; no response contract exists | — |
-| `actions:inspect-frames` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
-| `actions:reinspect-frames` | `blocked:T42` | `POST /actions/frames/reinspect` — incompatible selection state | `src/main/ipc.js` | Backend path/selection state is not the Shell opaque `selectionId` and lacks active-pack collision semantics | — |
-| `actions:clear-frame-selection` | `blocked:T42` | `DELETE /actions/frames/selection` — incompatible selection state | `src/main/ipc.js` | Backend and Shell clear different in-process selections; no shared selection contract exists | — |
-| `actions:import-frames` | `blocked:T42` | `POST /actions/frames/import` — non-equivalent Job | `src/main/ipc.js` | Backend imports a legacy repository path but does not preserve label/active-pack ownership or Shell animation, trigger-runtime, and chat side effects | — |
-| `actions:save-config` | `blocked:T42` | `PUT /actions/config` — non-equivalent write | `src/main/ipc.js` | Backend writes legacy JSON directly; Shell persists through ActionService/PetService and applies runtime effects | — |
-| `actions:preview-trigger-proposal` | `blocked:T42` | `POST /actions/triggers/preview` — placeholder | `src/main/ipc.js` | Backend returns a synthetic preview object rather than the Shell preview result | — |
-| `actions:submit-trigger-proposal` | `blocked:T42` | `POST /actions/triggers/proposals` — separate store | `src/main/ipc.js` | Backend proposal storage is process-local and differs from the host inbox semantics | — |
-| `actions:accept-trigger-proposal` | `blocked:T42` | `POST /actions/triggers/proposals/:id/accept` — placeholder | `src/main/ipc.js` | Backend does not apply the host action/rule effects when accepting a proposal | — |
-| `actions:reject-trigger-proposal` | `blocked:T42` | `POST /actions/triggers/proposals/:id/reject` — placeholder | `src/main/ipc.js` | Backend does not persist the host inbox result or rejection reason | — |
-| `actions:update-trigger-rule` | `blocked:T42` | `PATCH /actions/triggers/rules/:id` — placeholder | `src/main/ipc.js` | Backend does not persist or refresh the Shell trigger runtime | — |
-| `actions:delete-trigger-rule` | `blocked:T42` | `DELETE /actions/triggers/rules/:id` — placeholder | `src/main/ipc.js` | Backend does not persist or refresh the Shell trigger runtime | — |
-| `actions:delete` | `blocked:T42` | `DELETE /actions/:id` — non-equivalent write | `src/main/ipc.js` | Backend edits only legacy JSON; Shell also owns active-pack persistence, frame/sprite cleanup, animation reload, and trigger refresh | — |
+| `actions:get` | `retired` | `GET /actions` | `src/main/ipc.js` | Control Center reads the complete persisted action config from Backend | 4b6a1ac |
+| `actions:inspect-frames` | `retired` | `POST /actions/frames/inspect` | `src/main/ipc.js` | Frame inspection is owned by the Backend action domain | 4b6a1ac |
+| `actions:reinspect-frames` | `retired` | `POST /actions/frames/reinspect` | `src/main/ipc.js` | Reinspection uses the HTTP action selection lifecycle | 4b6a1ac |
+| `actions:clear-frame-selection` | `retired` | `DELETE /actions/frames/selection` | `src/main/ipc.js` | Selection cleanup is owned by the Backend action domain | 4b6a1ac |
+| `actions:import-frames` | `retired` | `POST /actions/frames/import` → Job/SSE | `src/main/ipc.js` | Frame import uses the shared Jobs runner and publishes action changes | 4b6a1ac |
+| `actions:save-config` | `retired` | `PUT /actions/config` | `src/main/ipc.js` | Config writes use host ActionService persistence semantics | 4b6a1ac |
+| `actions:preview-trigger-proposal` | `retired` | `POST /actions/triggers/preview` | `src/main/ipc.js` | Preview delegates to host validation without persisting | 4b6a1ac |
+| `actions:submit-trigger-proposal` | `retired` | `POST /actions/triggers/proposals` | `src/main/ipc.js` | Proposal inbox is persisted in the action manifest | 4b6a1ac |
+| `actions:accept-trigger-proposal` | `retired` | `POST /actions/triggers/proposals/:id/accept` | `src/main/ipc.js` | Acceptance applies host action/rule effects | 4b6a1ac |
+| `actions:reject-trigger-proposal` | `retired` | `POST /actions/triggers/proposals/:id/reject` | `src/main/ipc.js` | Rejection persists status and reason | 4b6a1ac |
+| `actions:update-trigger-rule` | `retired` | `PATCH /actions/triggers/rules/:id` | `src/main/ipc.js` | Rule updates use host validation and persistence | 4b6a1ac |
+| `actions:delete-trigger-rule` | `retired` | `DELETE /actions/triggers/rules/:id` | `src/main/ipc.js` | Rule deletion uses host persistence semantics | 4b6a1ac |
+| `actions:delete` | `retired` | `DELETE /actions/:id` | `src/main/ipc.js` | Deletion delegates to the shared importer | 4b6a1ac |
 | `pet-packs:list` | `retired` | `GET /pet-packs` | `src/main/ipc.js` | Pet Pack state is served through the Shell-owned reverse bridge and Backend HTTP | 490357f7 |
 | `pet-packs:inspect-directory` | `keep` | `IPC-only (native/window)` | `src/main/ipc.js` | Window/native IPC remains the intended boundary | — |
 | `pet-packs:clear-selection` | `retired` | `POST /pet-packs/validate` | `src/main/ipc.js` | Selection lifecycle is handled through the Shell Pet Pack reverse bridge | 490357f7 |

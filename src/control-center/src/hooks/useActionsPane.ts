@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
+import { actionsHttpApi } from '../features/actions/api.ts'
 import { nextPetPackActivationEventId, petPackApi, resolvePetPackJob, type PetPackJobKind } from '../features/pet-packs/api.ts'
 import { useJob } from './useJob.ts'
 import { useSse } from './useSse.ts'
@@ -42,7 +43,7 @@ export function useActionsPane() {
   useEffect(() => {
     let mounted = true
     Promise.all([
-      api.getActions(),
+      actionsHttpApi.getActions(),
       petPackApi.list()
     ]).then(([loadedActions, loadedPetPacks]) => {
       if (!mounted) return
@@ -62,7 +63,7 @@ export function useActionsPane() {
     if (!eventId) return
     lastHandledPetPackEventIdRef.current = eventId
     let mounted = true
-    Promise.all([api.getActions(), petPackApi.list()]).then(([loadedActions, loadedPetPacks]) => {
+    Promise.all([actionsHttpApi.getActions(), petPackApi.list()]).then(([loadedActions, loadedPetPacks]) => {
       if (!mounted) return
       setActionsConfig(cloneActionsConfig(loadedActions))
       setPetPacks(clonePetPacks(loadedPetPacks))
@@ -104,7 +105,7 @@ export function useActionsPane() {
       return undefined
     }
     let canceled = false
-    api.previewActionTriggerProposal({
+    actionsHttpApi.previewActionTriggerProposal({
       actionId,
       type: triggerProposalType,
       binding: triggerProposalType === 'click' ? 'clickAction' : undefined,
@@ -121,7 +122,7 @@ export function useActionsPane() {
     setImportDraft({ ...importDraft, ...partial })
     if (status) setStatus('')
     if (clearInspection && importInspection?.selectionId) {
-      api.clearActionFrameSelection({ selectionId: importInspection.selectionId }).catch(() => {})
+      actionsHttpApi.clearActionFrameSelection({ selectionId: importInspection.selectionId }).catch(() => {})
       setImportInspection(null)
     }
   }
@@ -145,7 +146,7 @@ export function useActionsPane() {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.saveActionsConfig({
+      const response = await actionsHttpApi.saveActionsConfig({
         defaultAction: actionsConfig.defaultAction,
         clickAction: actionsConfig.clickAction
       })
@@ -168,7 +169,7 @@ export function useActionsPane() {
     setStatus('')
     setLastTriggerProposalResult(null)
     try {
-      const response = await api.saveActionsConfig({
+      const response = await actionsHttpApi.saveActionsConfig({
         triggerProposal: {
           actionId,
           type: triggerProposalType,
@@ -195,7 +196,7 @@ export function useActionsPane() {
     setStatus('')
     setLastTriggerProposalResult(null)
     try {
-      const response = await api.acceptActionTriggerProposal(proposalId)
+      const response = await actionsHttpApi.acceptActionTriggerProposal(proposalId)
       setActionsConfig(cloneActionsConfig(response.animations))
       setLastTriggerProposalResult(response.triggerProposal || null)
       const proposal = response.proposal
@@ -217,7 +218,7 @@ export function useActionsPane() {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.rejectActionTriggerProposal(proposalId, reason.trim())
+      const response = await actionsHttpApi.rejectActionTriggerProposal(proposalId, reason.trim())
       setActionsConfig(cloneActionsConfig(response.animations))
       setStatus(`已拒绝触发提案：${response.proposal?.actionId || proposalId}`)
     } catch (error) {
@@ -232,7 +233,7 @@ export function useActionsPane() {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.setActionTriggerRuleStatus(ruleId, status)
+      const response = await actionsHttpApi.setActionTriggerRuleStatus(ruleId, status)
       setActionsConfig(cloneActionsConfig(response.animations))
       setStatus(`${status === 'disabled' ? '已停用' : '已启用'}触发规则：${ruleId}`)
     } catch (error) {
@@ -248,7 +249,7 @@ export function useActionsPane() {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.deleteActionTriggerRule(ruleId)
+      const response = await actionsHttpApi.deleteActionTriggerRule(ruleId)
       setActionsConfig(cloneActionsConfig(response.animations))
       setStatus(`已删除触发规则：${ruleId}`)
     } catch (error) {
@@ -263,7 +264,7 @@ export function useActionsPane() {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.updateActionTriggerRule(payload)
+      const response = await actionsHttpApi.updateActionTriggerRule(payload)
       setActionsConfig(cloneActionsConfig(response.animations))
       setStatus(`已保存触发规则：${payload.ruleId}`)
       return true
@@ -279,7 +280,7 @@ export function useActionsPane() {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.inspectActionFrames({ actionId: importDraft.actionId.trim() })
+      const response = await actionsHttpApi.inspectActionFrames({ actionId: importDraft.actionId.trim() })
       if (response.canceled) {
         setStatus('已取消选择')
       } else {
@@ -299,7 +300,7 @@ export function useActionsPane() {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.reinspectActionFrames({
+      const response = await actionsHttpApi.reinspectActionFrames({
         selectionId: importInspection.selectionId,
         actionId: importDraft.actionId.trim()
       })
@@ -324,7 +325,7 @@ export function useActionsPane() {
     setStatus('已清除选择')
     if (!selectionId) return
     try {
-      await api.clearActionFrameSelection({ selectionId })
+      await actionsHttpApi.clearActionFrameSelection({ selectionId })
     } catch (_) {}
   }
 
@@ -332,7 +333,7 @@ export function useActionsPane() {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.importActionFrames({
+      const response = await actionsHttpApi.importActionFrames({
         selectionId: importInspection?.selectionId,
         actionId: importDraft.actionId.trim(),
         label: importDraft.label
@@ -362,7 +363,7 @@ export function useActionsPane() {
     setWorking(true)
     setStatus('')
     try {
-      const response = await api.deleteAction(actionId)
+      const response = await actionsHttpApi.deleteAction(actionId)
       setActionsConfig(cloneActionsConfig(response.animations))
       setStatus(`已删除 ${actionId}`)
     } catch (error) {

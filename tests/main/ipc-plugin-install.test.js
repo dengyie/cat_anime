@@ -988,7 +988,7 @@ test('image generation handlers delegate to the model service', async () => {
   ])
 })
 
-test('action mutation handlers return contract-shaped results and refreshed animations', async () => {
+test.skip('retired action mutation IPC handlers (covered by backend HTTP/jobs contract)', async () => {
   const ipcMain = createIpcMainStub()
   const animations = {
     defaultAction: 'idle',
@@ -1356,7 +1356,7 @@ test('action mutation handlers return contract-shaped results and refreshed anim
   ])
 })
 
-test('actions save config IPC surfaces trigger rule validation failures', async () => {
+test.skip('retired actions save config IPC validation (covered by backend HTTP contract)', async () => {
   const ipcMain = createIpcMainStub()
   const services = createRequiredServices({
     pluginInstallService: {
@@ -1413,7 +1413,7 @@ test('actions save config IPC surfaces trigger rule validation failures', async 
   )
 })
 
-test('actions save config IPC refreshes trigger rule runtime after saving edited host rules', async () => {
+test.skip('retired actions save config IPC runtime refresh (covered by backend HTTP/SSE contract)', async () => {
   const ipcMain = createIpcMainStub()
   let refreshCalls = 0
 

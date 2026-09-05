@@ -46,7 +46,13 @@ test('shared IPC contract exports stable frozen channel names', () => {
     'hatch-pet-agent:check-capability',
     'hatch-pet-agent:get-run-status'
   ])
-  assert.equal(IPC.ACTIONS_PREVIEW_TRIGGER_PROPOSAL, 'actions:preview-trigger-proposal')
+  for (const retiredChannel of [
+    'ACTIONS_GET', 'ACTIONS_SAVE_CONFIG', 'ACTIONS_INSPECT_FRAMES', 'ACTIONS_IMPORT_FRAMES',
+    'ACTIONS_CLEAR_FRAME_SELECTION', 'ACTIONS_DELETE', 'ACTIONS_PREVIEW_TRIGGER_PROPOSAL',
+    'ACTIONS_SUBMIT_TRIGGER_PROPOSAL', 'ACTIONS_ACCEPT_TRIGGER_PROPOSAL',
+    'ACTIONS_REJECT_TRIGGER_PROPOSAL', 'ACTIONS_UPDATE_TRIGGER_RULE', 'ACTIONS_DELETE_TRIGGER_RULE',
+    'ACTIONS_CHANGED'
+  ]) assert.equal(IPC[retiredChannel], undefined, `${retiredChannel} must stay retired after the Actions HTTP cutover`)
   assert.equal(IPC.PLUGINS_RUN_CREATOR_STUDIO_DEFAULT_FLOW, 'plugins:run-creator-studio-default-flow')
   assert.equal(IPC.CREATOR_GET_STATE, 'creator:get-state')
   assert.equal(IPC.CREATOR_PICK_REFERENCE_IMAGE, 'creator:pick-reference-image')
