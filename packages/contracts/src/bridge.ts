@@ -56,10 +56,22 @@ export const PET_PACK_BRIDGE_OPERATIONS = [
 ] as const
 export type PetPackBridgeOperation = (typeof PET_PACK_BRIDGE_OPERATIONS)[number]
 
+export const ACTIONS_BRIDGE_OPERATIONS = [
+  "get", "inspect", "reinspect", "clear-selection", "import", "save-config",
+  "preview-proposal", "submit-proposal", "accept-proposal", "reject-proposal",
+  "update-rule", "delete-rule", "remove",
+] as const
+export type ActionsBridgeOperation = (typeof ACTIONS_BRIDGE_OPERATIONS)[number]
+
 export const backendToShellSchema = z.discriminatedUnion("type", [
   z.object({
+    type: z.literal("actions.request"),
+    operation: z.enum(ACTIONS_BRIDGE_OPERATIONS),
+    payload: z.record(z.string(), z.unknown()),
+  }).strict(),
+  z.object({
     type: z.literal("pet.command.request"),
-    operation: z.enum(["say", "playAction", "setEvent", "getActions", "reloadActions"]),
+    operation: z.enum(["say", "playAction", "setEvent"]),
     payload: z.record(z.string(), z.unknown()),
   }).strict(),
   z.object({ type: z.literal("pet.say"), text: z.string(), durationMs: z.number().int().positive().optional() }),
@@ -89,8 +101,16 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
   }).strict(),
 ])
 export type BackendToShell = z.infer<typeof backendToShellSchema>
+export const actionsRequestSchema = backendToShellSchema.options[0]
 
 export const shellToBackendSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("actions.result"),
+    operation: z.enum(ACTIONS_BRIDGE_OPERATIONS),
+    ok: z.boolean(),
+    result: z.unknown().optional(),
+    error: z.object({ code: z.enum(ERROR_CODES), message: z.string().min(1) }).strict().optional(),
+  }).strict(),
   z.object({
     type: z.literal("init"),
     userDataPath: z.string(),

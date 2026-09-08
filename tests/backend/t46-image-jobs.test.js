@@ -74,7 +74,7 @@ test("T46 runner publishes image progress as SSE-compatible job events", async (
 	}
 })
 
-test("T42 actions import job enters the runner and emits SSE lifecycle events", async () => {
+test("T42 Actions import uses the real domain and locks cancellation before the host write", async () => {
 	const [{ createJobsRepository }, { createQueue }, { createRunner }, { migrate }, { openDatabase }] = await Promise.all([
 		import("../../services/backend/store/repositories/jobs.js"),
 		import("../../services/backend/jobs/queue.js"),
@@ -89,35 +89,39 @@ test("T42 actions import job enters the runner and emits SSE lifecycle events", 
 		const queue = createQueue({ repo, tickMs: 60_000 })
 		const events = []
 		const calls = []
+		const { createActionService } = await import("../../services/backend/domains/actions.js")
+		const actions = createActionService({
+			jobs: repo,
+			emit: (name, payload) => events.push({ name, payload }),
+			shell: { request: async ({ operation, payload }) => {
+				const current = repo.activeByResourceKey("actions:import")
+				assert.equal(current.progress.phase, "finalizing")
+				await assert.rejects(() => runner.cancel(current.id), (error) => error.code === "JOB_NOT_CANCELABLE" && error.status === 423)
+				calls.push(payload)
+				return { body: { type: "actions.result", operation, ok: true, result: { ok: true, result: { importedAction: { id: payload.actionId } }, animations: { actions: [{ id: payload.actionId }] } } } }
+			} },
+		})
 		const runner = createRunner({
 			repo,
 			queue,
 			progress: ({ onEmit }) => ({ report: onEmit, flush: () => {}, reset: () => {} }),
 			emit: (name, payload) => events.push({ name, payload }),
 			handlers: {
-				"actions.import-frames": async ({ job, report, signal }) => {
-					calls.push(job.input)
-					assert.equal(signal.aborted, false)
-					report({ phase: "generating", percent: 25, message: "Generating action sprites" })
-					return { actionId: job.input.actionId, imported: true }
-				},
+				"actions.import-frames": ({ job, report, signal, finalize }) => actions.runImportFrames({ ...job.input, report, signal, finalize }),
 			},
 		})
-		const inserted = repo.insert({
-			id: "actions-import-frames:wave:1",
-			kind: "actions.import-frames",
-			input: { path: "/tmp/frames", actionId: "wave", label: "Wave" },
-			resourceKey: "actions:wave",
-		})
+		const { jobId } = actions.importFrames({ selectionId: "native-selection", actionId: "wave", label: "Wave" })
+		const inserted = repo.byId(jobId)
 		queue.enqueue(inserted.id)
 		const finished = await runner.run(queue.next())
 		assert.equal(finished.status, "succeeded")
-		assert.deepEqual(calls, [{ path: "/tmp/frames", actionId: "wave", label: "Wave" }])
-		assert.deepEqual(events.map(({ name }) => name), ["job.progress", "job.succeeded"])
+		assert.deepEqual(calls, [{ selectionId: "native-selection", actionId: "wave", label: "Wave" }])
+		assert.deepEqual(events.map(({ name }) => name), ["job.progress", "job.progress", "pet.actions-changed", "job.succeeded"])
 		assert.equal(events[0].payload.jobId, inserted.id)
 		assert.equal(events[0].payload.kind, "actions.import-frames")
-		assert.equal(events[0].payload.phase, "generating")
-		assert.equal(events[1].payload.result.actionId, "wave")
+		assert.equal(events[0].payload.phase, "importing")
+		assert.equal(events[1].payload.phase, "finalizing")
+		assert.equal(events[3].payload.result.result.importedAction.id, "wave")
 		queue.stop()
 	} finally {
 		db.close()

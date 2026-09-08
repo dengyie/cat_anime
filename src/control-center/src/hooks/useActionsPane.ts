@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
-import { controlCenterAPI as api } from '../api/control-center-api'
-import { actionsHttpApi } from '../features/actions/api.ts'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { actionsHttpApi, nextActionsEventId, resolveActionImportJob } from '../features/actions/api.ts'
 import { nextPetPackActivationEventId, petPackApi, resolvePetPackJob, type PetPackJobKind } from '../features/pet-packs/api.ts'
 import { useJob } from './useJob.ts'
 import { useSse } from './useSse.ts'
 import { cloneActionsConfig, clonePetPacks, defaultActionsConfig, defaultPetPacks } from '../lib/defaults'
 import { messageFromError } from '../lib/errors'
 import type {
+  ActionFrameImportResult,
   ActionTriggerProposalAcceptanceResult,
   ActionTriggerProposalPreviewResult,
   ActionTriggerRuleStatus,
@@ -37,8 +37,27 @@ export function useActionsPane() {
   const [working, setWorking] = useState(false)
   const [petPackJobRequest, setPetPackJobRequest] = useState<{ jobId: string; kind: PetPackJobKind; packId?: string } | null>(null)
   const { job: petPackJob } = useJob(petPackJobRequest?.jobId || null)
+  const [actionImportRequest, setActionImportRequest] = useState<{ jobId: string; actionId: string } | null>(null)
+  const { job: actionImportJob } = useJob(actionImportRequest?.jobId || null)
   const petPackEvents = useSse(['pet'])
   const lastHandledPetPackEventIdRef = useRef<string | null>(null)
+  const lastHandledActionsEventIdRef = useRef<string | null>(null)
+
+  const finishActionImport = useCallback((response: ActionFrameImportResult, actionId: string) => {
+    if (response.ok === false) {
+      if (response.inspectionResult && !response.inspectionResult.canceled) setImportInspection(response.inspectionResult)
+      setStatus('帧文件夹需要修正')
+    } else if (response.canceled) {
+      setStatus('已取消导入')
+    } else if (response.animations && response.result?.importedAction) {
+      setActionsConfig(cloneActionsConfig(response.animations))
+      setSelectedActionId(response.result.importedAction.id || actionId)
+      setImportInspection(null)
+      setStatus(`已导入 ${response.result.importedAction.label || actionId}`)
+    } else {
+      setStatus('导入返回结果不完整')
+    }
+  }, [])
 
   useEffect(() => {
     let mounted = true
@@ -72,6 +91,32 @@ export function useActionsPane() {
     })
     return () => { mounted = false }
   }, [petPackEvents.lastEventId, petPackEvents.lastEventName])
+
+  useEffect(() => {
+    const eventId = nextActionsEventId(petPackEvents, lastHandledActionsEventIdRef.current)
+    if (!eventId) return
+    lastHandledActionsEventIdRef.current = eventId
+    let mounted = true
+    actionsHttpApi.getActions().then((actions) => {
+      if (mounted) setActionsConfig(cloneActionsConfig(actions))
+    }).catch((error) => {
+      if (mounted) setStatus(messageFromError(error, '动作事件刷新失败'))
+    })
+    return () => { mounted = false }
+  }, [petPackEvents.lastEventId, petPackEvents.lastEventName])
+
+  useEffect(() => {
+    if (!actionImportRequest || !actionImportJob || actionImportJob.jobId !== actionImportRequest.jobId) return
+    const resolved = resolveActionImportJob(actionImportJob)
+    if (resolved.kind === 'pending') {
+      setStatus(actionImportJob.progress?.message || '正在导入动作…')
+      return
+    }
+    if (resolved.kind === 'failed') setStatus(resolved.message)
+    else finishActionImport(resolved.result, actionImportRequest.actionId)
+    setActionImportRequest(null)
+    setWorking(false)
+  }, [actionImportJob, actionImportRequest, finishActionImport])
 
   useEffect(() => {
     if (!petPackJobRequest || !petPackJob || petPackJob.jobId !== petPackJobRequest.jobId) return
@@ -330,32 +375,26 @@ export function useActionsPane() {
   }
 
   const onImport = async () => {
+    if (!importInspection?.selectionId) return
+    const actionId = importDraft.actionId.trim()
     setWorking(true)
     setStatus('')
     try {
-      const response = await actionsHttpApi.importActionFrames({
-        selectionId: importInspection?.selectionId,
-        actionId: importDraft.actionId.trim(),
+      const started = await actionsHttpApi.importActionFrames({
+        selectionId: importInspection.selectionId,
+        actionId,
         label: importDraft.label
       })
-      if (response.ok === false) {
-        setImportInspection(response.inspectionResult && !response.inspectionResult.canceled ? response.inspectionResult : null)
-        setStatus('帧文件夹需要修正')
-      } else if (response.canceled) {
-        setStatus('已取消导入')
-      } else if (response.animations && response.result) {
-        setActionsConfig(cloneActionsConfig(response.animations))
-        if (response.result.importedAction?.id) setSelectedActionId(response.result.importedAction.id)
-        setImportInspection(null)
-        setStatus(`已导入 ${response.result.importedAction?.label || importDraft.actionId}`)
-      } else {
-        setStatus('导入返回结果不完整')
+      if ('jobId' in started) {
+        setActionImportRequest({ jobId: started.jobId, actionId })
+        setStatus('正在导入动作…')
+        return
       }
+      finishActionImport(started.result, actionId)
     } catch (error) {
       setStatus(messageFromError(error, '导入失败'))
-    } finally {
-      setWorking(false)
     }
+    setWorking(false)
   }
 
   const onDelete = async (actionId: string) => {

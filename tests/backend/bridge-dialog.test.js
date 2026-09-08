@@ -24,13 +24,13 @@ function resultEnvelope(id, paths) {
 }
 
 describe("dialog.request bridge", () => {
-	it("backend whitelist contains exactly the 16 contract message types", () => {
-		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 16)
-		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 16)
+	it("backend whitelist contains exactly the 17 contract message types", () => {
+		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.length, 17)
+		assert.equal(new Set(bridge.BACKEND_TO_SHELL_TYPES).size, 17)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("dialog.request"), true)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("catalog.request"), true)
 		assert.equal(bridge.BACKEND_TO_SHELL_TYPES.includes("pet-packs.request"), true)
-		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 13, "settings, secrets, Catalog, Pet Pack, and pet command host results are part of the bridge contract")
+		assert.equal(bridge.SHELL_TO_BACKEND_TYPES.length, 14, "settings, secrets, Catalog, Pet Pack, Actions and pet command host results are part of the bridge contract")
 	})
 
 	it("request and dialog.result correlate with the same envelope id", async () => {

@@ -164,7 +164,7 @@ const createRequiredServices = (overrides = {}) => ({
   ...overrides
 })
 
-test('retired Actions IPC handlers are not registered', async () => {
+test('actions:get returns trigger runtime diagnostics alongside the actions config view', async () => {
   const ipcMain = createIpcMainStub()
   const { registerIpcHandlers } = loadIpcWithElectron({
     ipcMain,
@@ -176,16 +176,117 @@ test('retired Actions IPC handlers are not registered', async () => {
     }
   })
 
-  registerIpcHandlers({
+  const runtime = registerIpcHandlers({
     ...createRequiredServices(),
     ipcMainService: ipcMain,
+    triggerRuleRuntimeService: {
+      getDiagnostics: () => ({
+        currentState: { actionId: 'idle' },
+        decisions: [
+          {
+            ruleId: 'rule:event:wave:1',
+            triggerType: 'event',
+            outcome: 'matched',
+            reason: 'rule matched',
+            actionId: 'wave',
+            binding: 'plugin:event',
+            source: 'plugin:test'
+          }
+        ]
+      })
+    }
   })
-  for (const name of [
-    'ACTIONS_GET', 'ACTIONS_SAVE_CONFIG', 'ACTIONS_INSPECT_FRAMES', 'ACTIONS_IMPORT_FRAMES',
-    'ACTIONS_CLEAR_FRAME_SELECTION', 'ACTIONS_DELETE', 'ACTIONS_PREVIEW_TRIGGER_PROPOSAL',
-    'ACTIONS_SUBMIT_TRIGGER_PROPOSAL', 'ACTIONS_ACCEPT_TRIGGER_PROPOSAL',
-    'ACTIONS_REJECT_TRIGGER_PROPOSAL', 'ACTIONS_UPDATE_TRIGGER_RULE', 'ACTIONS_DELETE_TRIGGER_RULE'
-  ]) assert.equal(ipcMain.handlers.has(IPC[name]), false, name + ' handler must be retired')
+
+  const result = await runtime.handleActionsRequest({ operation: 'get' })
+
+  assert.deepEqual(result.triggerRuntimeDiagnostics, {
+    currentState: { actionId: 'idle' },
+    decisions: [
+      {
+        ruleId: 'rule:event:wave:1',
+        triggerType: 'event',
+        outcome: 'matched',
+        reason: 'rule matched',
+        actionId: 'wave',
+        binding: 'plugin:event',
+        source: 'plugin:test'
+      }
+    ]
+  })
+})
+
+test('actions:save-config returns animations with trigger runtime diagnostics after host rule edits', async () => {
+  const ipcMain = createIpcMainStub()
+  const { registerIpcHandlers } = loadIpcWithElectron({
+    ipcMain,
+    BrowserWindow: { fromWebContents: () => null },
+    app: { quit: () => {} },
+    dialog: {},
+    screen: {
+      getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 900, height: 700 } })
+    }
+  })
+
+  const runtime = registerIpcHandlers({
+    ...createRequiredServices(),
+    ipcMainService: ipcMain,
+    triggerRuleRuntimeService: {
+      refresh: () => ({
+        currentState: { actionId: 'idle' },
+        decisions: []
+      }),
+      getDiagnostics: () => ({
+        currentState: { actionId: 'idle' },
+        decisions: [
+          {
+            ruleId: 'rule:state:wave:1',
+            triggerType: 'state',
+            outcome: 'skipped',
+            reason: 'binding mismatch',
+            actionId: 'wave',
+            binding: 'working',
+            source: 'idle'
+          }
+        ]
+      })
+    }
+  })
+
+  const result = await runtime.handleActionsRequest({ operation: 'save-config', payload: {
+    defaultAction: 'idle',
+    clickAction: 'wave',
+    triggerRules: [
+      {
+        id: 'rule:state:wave:1',
+        type: 'state',
+        actionId: 'wave',
+        enabled: true,
+        binding: 'working',
+        intervalMs: 0,
+        notes: '',
+        sourcePluginId: '',
+        sourceRunId: '',
+        sourceCommandId: '',
+        createdAt: '2026-06-29T08:00:00.000Z',
+        updatedAt: '2026-06-29T08:00:00.000Z'
+      }
+    ]
+  } })
+
+  assert.deepEqual(result.animations.triggerRuntimeDiagnostics, {
+    currentState: { actionId: 'idle' },
+    decisions: [
+      {
+        ruleId: 'rule:state:wave:1',
+        triggerType: 'state',
+        outcome: 'skipped',
+        reason: 'binding mismatch',
+        actionId: 'wave',
+        binding: 'working',
+        source: 'idle'
+      }
+    ]
+  })
 })
 
 test('Shell Pet Pack activate bridge returns runtime diagnostics and emits one successful activation event', async () => {

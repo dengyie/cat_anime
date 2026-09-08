@@ -26,6 +26,7 @@ const { registerSettingsIpc } = require('./ipc/register-settings-ipc')
 const { registerServiceIpc } = require('./ipc/register-service-ipc')
 const { registerSystemIpc } = require('./ipc/register-system-ipc')
 const { createPetChatFacade } = require('./ipc/pet-chat-facade')
+const { createActionsSidecarBridge } = require('./ipc/actions-sidecar-bridge')
 const {
   collectCustomCursorAssetPaths,
   createPetRendererSettings,
@@ -137,7 +138,7 @@ const resolvePetSaySourceSurface = ({ source = '', requestSource = '' } = {}) =>
 /**
  * 注册所有 IPC 处理器。接收依赖注入对象，各 handler 只通过注入的函数访问外部能力。
  */
-const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, hatchPetAgentService, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, creatorWorkflowService = null, pluginService, pluginInstallService, pluginGithubImportService, localHttpService, cursorAssetService, systemCursorService, appLogService, applyWindowScale, applyPetViewport = () => {},
+const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, hatchPetAgentService, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, creatorWorkflowService = null, pluginService, pluginInstallService, pluginGithubImportService, localHttpService, actionService, actionImportService, cursorAssetService, systemCursorService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, sidecarRuntimeCoordinator = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
 
   const showOpenDialogForEvent = (event, options) => {
@@ -159,6 +160,15 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   const refreshTriggerRuleRuntime = () => {
     triggerRuleRuntimeService?.refresh?.()
   }
+
+  const actionsSidecarBridge = createActionsSidecarBridge({
+    actionService, actionImportService, petService, getPetWindow,
+    getActivePackId: () => petPackService.listPacks()?.activePackId || '',
+    showOpenDialogForEvent,
+    createActionsViewState: (animations = null) => createActionsViewState(petService, triggerRuleRuntimeService, animations),
+    reloadAndSendAnimations, refreshTriggerRuleRuntime, recordAppLog
+  })
+  ipcMainService.handle(IPC.ACTIONS_INSPECT_FRAMES, (event, payload) => actionsSidecarBridge.inspect(event, payload))
 
   const petChatFacade = createPetChatFacade({
     getPetWindow,
@@ -841,7 +851,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   return {
     broadcastActivePetPackChanged: petChatFacade.broadcastActivePetPackChanged,
-    handlePetPackRequest
+    handlePetPackRequest,
+    handleActionsRequest: actionsSidecarBridge.handle
   }
 }
 

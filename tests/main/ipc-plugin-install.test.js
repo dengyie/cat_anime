@@ -988,8 +988,9 @@ test('image generation handlers delegate to the model service', async () => {
   ])
 })
 
-test.skip('retired action mutation IPC handlers (covered by backend HTTP/jobs contract)', async () => {
+test('Shell action mutations retain contract results and animation broadcasts', async () => {
   const ipcMain = createIpcMainStub()
+  const actions = (operation, payload) => runtime.handleActionsRequest({ operation, payload })
   const animations = {
     defaultAction: 'idle',
     clickAction: 'wave',
@@ -1023,7 +1024,7 @@ test.skip('retired action mutation IPC handlers (covered by backend HTTP/jobs co
     }
   })
 
-  registerIpcHandlers({
+  const runtime = registerIpcHandlers({
     ...services,
     petService: {
       ...services.petService,
@@ -1166,19 +1167,19 @@ test.skip('retired action mutation IPC handlers (covered by backend HTTP/jobs co
   })
 
   const inspection = await ipcMain.handlers.get(IPC.ACTIONS_INSPECT_FRAMES)(null, { actionId: 'wave' })
-  const importResult = await ipcMain.handlers.get(IPC.ACTIONS_IMPORT_FRAMES)(null, {
+  const importResult = await actions('import', {
     selectionId: inspection.selectionId,
     actionId: 'wave',
     label: 'Wave hello'
   })
   const brokenInspection = await ipcMain.handlers.get(IPC.ACTIONS_INSPECT_FRAMES)(null, { actionId: 'broken' })
-  const brokenImportResult = await ipcMain.handlers.get(IPC.ACTIONS_IMPORT_FRAMES)(null, {
+  const brokenImportResult = await actions('import', {
     selectionId: brokenInspection.selectionId,
     actionId: 'broken',
     label: 'Broken'
   })
-  const saveResult = await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, { defaultAction: 'idle', clickAction: 'wave' })
-  const triggerResult = await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, {
+  const saveResult = await actions('save-config', { defaultAction: 'idle', clickAction: 'wave' })
+  const triggerResult = await actions('save-config', {
     triggerProposal: {
       actionId: 'wave',
       type: 'click',
@@ -1188,7 +1189,7 @@ test.skip('retired action mutation IPC handlers (covered by backend HTTP/jobs co
       sourceCommandId: 'import-approved-action'
     }
   })
-  const triggerPreview = await ipcMain.handlers.get(IPC.ACTIONS_PREVIEW_TRIGGER_PROPOSAL)(null, {
+  const triggerPreview = await actions('preview-proposal', {
     actionId: 'wave',
     type: 'click',
     binding: 'clickAction',
@@ -1196,7 +1197,7 @@ test.skip('retired action mutation IPC handlers (covered by backend HTTP/jobs co
     sourceRunId: 'run-1',
     sourceCommandId: 'import-approved-action'
   })
-  const updatedRuleResult = await ipcMain.handlers.get(IPC.ACTIONS_UPDATE_TRIGGER_RULE)(null, {
+  const updatedRuleResult = await actions('update-rule', {
     ruleId: 'rule:state:wave:test',
     status: 'disabled',
     ruleSpec: {
@@ -1207,10 +1208,10 @@ test.skip('retired action mutation IPC handlers (covered by backend HTTP/jobs co
       }
     }
   })
-  const deletedRuleResult = await ipcMain.handlers.get(IPC.ACTIONS_DELETE_TRIGGER_RULE)(null, {
+  const deletedRuleResult = await actions('delete-rule', {
     ruleId: 'rule:state:wave:test'
   })
-  const deleteResult = await ipcMain.handlers.get(IPC.ACTIONS_DELETE)(null, { actionId: 'wave' })
+  const deleteResult = await actions('remove', { actionId: 'wave' })
 
   assert.deepEqual(importResult, {
     ok: true,
@@ -1356,8 +1357,9 @@ test.skip('retired action mutation IPC handlers (covered by backend HTTP/jobs co
   ])
 })
 
-test.skip('retired actions save config IPC validation (covered by backend HTTP contract)', async () => {
+test('Shell actions save config surfaces trigger rule validation failures', async () => {
   const ipcMain = createIpcMainStub()
+  const actions = (operation, payload) => runtime.handleActionsRequest({ operation, payload })
   const services = createRequiredServices({
     pluginInstallService: {
       inspectPluginPackage: () => ({}),
@@ -1372,7 +1374,7 @@ test.skip('retired actions save config IPC validation (covered by backend HTTP c
     }
   })
 
-  registerIpcHandlers({
+  const runtime = registerIpcHandlers({
     ...services,
     actionImportService: {
       inspectActionFrames: () => ({ inspection: { valid: true } }),
@@ -1391,7 +1393,7 @@ test.skip('retired actions save config IPC validation (covered by backend HTTP c
   })
 
   await assert.rejects(
-    () => ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, {
+    () => actions('save-config', {
       defaultAction: 'idle',
       clickAction: 'wave',
       triggerRules: [{
@@ -1413,11 +1415,12 @@ test.skip('retired actions save config IPC validation (covered by backend HTTP c
   )
 })
 
-test.skip('retired actions save config IPC runtime refresh (covered by backend HTTP/SSE contract)', async () => {
+test('Shell actions save config refreshes edited trigger rules', async () => {
   const ipcMain = createIpcMainStub()
+  const actions = (operation, payload) => runtime.handleActionsRequest({ operation, payload })
   let refreshCalls = 0
 
-  registerIpcHandlers({
+  const runtime = registerIpcHandlers({
     ...createRequiredServices({
       pluginInstallService: {
         inspectPluginPackage: () => ({}),
@@ -1446,7 +1449,7 @@ test.skip('retired actions save config IPC runtime refresh (covered by backend H
     ipcMainService: ipcMain
   })
 
-  await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, {
+  await actions('save-config', {
     defaultAction: 'idle',
     clickAction: 'wave',
     triggerRules: [{

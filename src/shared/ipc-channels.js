@@ -46,6 +46,7 @@ const IPC = Object.freeze({
   SETTINGS_CLOSE: 'settings:close',
   SETTINGS_CHANGED: 'settings:changed',
   PET_PACKS_INSPECT_DIRECTORY: 'pet-packs:inspect-directory',
+  ACTIONS_INSPECT_FRAMES: 'actions:inspect-frames',
   AI_GET_CONFIG: 'ai:get-config',
   AI_SAVE_CONFIG: 'ai:save-config',
   AI_SAVE_API_KEY: 'ai:save-api-key',

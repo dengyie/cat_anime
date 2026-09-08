@@ -1,6 +1,6 @@
 # 09 · 仓库现状快照
 
-> v1.7 · 2026-09-05 · 基线分支 `main` · T42 Catalog/Pet Packs 合入与 Actions 语义复核
+> v1.8 · 2026-09-08 · T42 Actions 切换与 T44–T46 落地复核
 
 **读者**:领到任务卡准备写代码的 agent。前置阅读 [08 篇 执行手册](./08-agent-guide.md)。
 
@@ -33,14 +33,15 @@ services/backend/                      ✅ sidecar backend 已接入业务
   bridge/message-schema.js  bridge/shell-client.js
   store/db.js  store/migrate.js  store/migrate-from-json.js
   store/migrations/001_init.sql  store/repositories/{jobs,logs}.js
-  jobs/ (6 个顶层文件)  jobs/handlers/ (6 个文件)
-  routes/ (11 组)  domains/ (7 组:6 个顶层文件 + plugins/)
+  jobs/ (6 个顶层文件)  jobs/handlers/ (7 个文件)
+  routes/ (12 组)  domains/ (8 组:6 个顶层文件 + plugins/ + ai/)
+  secrets/provider-keys.js  mcp/{mcp-transport-service,local-http-service}.cjs
   events/hub.js
 scripts/check-api-contract.mjs          ✅ M0 门禁
 tests/backend/state-machine.test.js     ✅ 测试样板
 ```
 
-根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 11 组 routes 文件装配 74 条实际 method/path；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
+根 `package.json` 已开启 workspaces(`apps/*`、`services/*`、`packages/*`),`check:node` 已覆盖 `apps` 与 `services`。backend 当前由 12 组 routes 文件装配 76 条实际 method/path；`routes/registry.js` 是硬对账注册表，不是第二套业务实现。
 
 **当前 backend 已完成启动、迁移、Job 恢复/调度和 HTTP 业务路由注册。** 尚未归属仓储的三张表见缺口 G13。
 
@@ -93,7 +94,7 @@ const router = createRouter({ basePath: "/api/v1" })
 
 `parseEnvelope` 的 6 种失败原因:`not-object` / `version-mismatch` / `bad-id` / `bad-at` / `bad-body` / `unknown-type`。**`version-mismatch` 必须走「退出 78 由 Shell 重拉」,不能当普通错误吞掉**(ADR-011)。
 
-`BACKEND_TO_SHELL_TYPES` 与契约 `backendToShellSchema` 当前均为 12 项,包含 `dialog.request`、`settings.apply.request` 与 `settings.persist.result`;请求复用 envelope `id`,结果超时为 60 秒。缺口 G2 已关闭(证据见 §4)。
+`BACKEND_TO_SHELL_TYPES` 与契约 `backendToShellSchema` 当前均为 17 项，包含 Settings、Secrets、Catalog、Pet Packs、Actions 与 PetService 请求；类型全集由 `@openpet/contracts` 派生;请求复用 envelope `id`,结果超时为 60 秒。缺口 G2 已关闭(证据见 §4)。
 
 ### 2.4 `services/backend/bridge/shell-client.js`
 
@@ -263,6 +264,10 @@ countByStatus(status?)                     // → number | { [status]: number }
 
 ---
 
+### 2.18 T42 Actions 接口
+
+`createActionService({ shell, jobs, emit, now })` 通过 Shell 原服务提供活动包视图。`importFrames({ selectionId, actionId, label? })` 只创建 Job；`runImportFrames({ selectionId, actionId, label, signal, report, finalize })` 在 finalizing 内派发导入。Shell 的 `src/main/ipc/actions-sidecar-bridge.js` 保留原生选择、配置写入、提案与规则校验、动画广播、运行诊断。12 个业务 IPC 退休，原生 inspect 留用；当前 128 个 IPC，preload 17,475 字节。T43 的 10 KiB 目标尚未达到，不能以现有 24 KiB 门禁通过宣称收口。
+
 ## 3. 还不存在的文件
 
 按 M1 归组;编号见 [10 篇](./10-tasks-m1.md)、[11 篇](./11-tasks-m1-http.md)、[12 篇](./12-tasks-m2.md)、[13 篇](./13-tasks-m3.md) 的任务卡(M1 = T01–T14、M2 = T15–T23、M3 = T24–T33)。
@@ -271,10 +276,11 @@ countByStatus(status?)                     // → number | { [status]: number }
 | --- | --- |
 | 迁移与仓储 | ~~`store/migrate.js`、`store/repositories/*.js`、`store/migrate-from-json.js`~~ ✅ T01/T02/T14 已落地；AI 会话等未归属仓储见缺口 G13 |
 | Job 引擎 | ~~`jobs/queue.js`、`jobs/runner.js`、`jobs/progress.js`、`jobs/recovery.js`、`jobs/handlers/*.js`~~ ✅ T05–T08/T31 已落地 |
-| HTTP | ~~`routes/*.js`、`domains/*.js`、SSE 推送~~ ✅ T09–T33 已落地；当前注册表实际 74 条路由 |
-| 密钥 | `secrets/*.js` |
+| HTTP | ~~`routes/*.js`、`domains/*.js`、SSE 推送~~ ✅ T09–T33 已落地；当前注册表实际 76 条路由 |
+| 密钥 | ~~`secrets/*.js`~~ ✅ T44 `1433b299` 已落地，只写边界与脱敏摘要 |
 | 反向通道 | ~~`dialog.request` 补齐、`apps/desktop/src/sidecar/message-handler.js`、`orphan-cleanup.js`、`domains/plugins/process-ledger.js`(T29)~~ ✅ T12/T13/T29 已落地 |
-| 兼容层 | `mcp/*.js`、`/api/pet/*` 与 `/mcp` 的保留实现(ADR-009) |
+| 兼容层 | ~~`mcp/*.js`、`/api/pet/*` 与 `/mcp`~~ ✅ T45 `7bdf4f77` 已迁入同一 sidecar 的独立监听器，默认关闭 |
+| AI / Creator | T46 `40358259` 与 `4b6a1ac2` 已实现 image.generate Job 和 finalizing；T47 对话与 SQLite、T48 Creator 迁移待完成 |
 
 > ⚠️ **`conversations` 仓储要到 M4 才建。** T14 的 JSON 导入直接用 `db.prepare(...)` 写入,不要为它提前造仓库层 —— 见 [12 篇 T14](./12-tasks-m2.md)。
 
@@ -339,3 +345,4 @@ countByStatus(status?)                     // → number | { [status]: number }
 | v1.5 | 2026-09-05 | T41/T42 复核:当前 154 条 IPC;About 两条业务通道已退休;Catalog、Pet Packs、Actions 因后端语义不等价保留 IPC/preload 并登记 blocked:T42;反向通道补记 settings apply/persist 类型 |
 | v1.6 | 2026-09-05 | T42 Catalog 6 条 IPC 已在 `ac59d75f` 同提交退休；当前 148 条 IPC、74 条 REST 路由；T41 live bridge 修复提交 `bac49b80` 待总控 rebase 验收 |
 | v1.7 | 2026-09-05 | T42 Pet Packs 8 条 IPC 已在 `490357f7` 同提交退休；当前 140 条 IPC、74 条 REST 路由；T41 live bridge rebase 后提交 `890dac82` 待合入 |
+| v1.8 | 2026-09-08 | T42 Actions 活动包权威与 Job 切换；当前 128 条 IPC、76 条 REST 路由；T44 密钥、T45 MCP、T46 图像任务补录，T43/T47/T48 保留未完成状态 |

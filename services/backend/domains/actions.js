@@ -1,125 +1,94 @@
-import fs from "node:fs"
-import path from "node:path"
-import { createRequire } from "node:module"
-import { EVENT_ACTIONS_CHANGED } from "@openpet/contracts"
+import { randomUUID } from "node:crypto"
+import { ERROR_CODES, EVENT_ACTIONS_CHANGED } from "@openpet/contracts"
 import { ApiError } from "../http/middleware.js"
 
-const require = createRequire(import.meta.url)
-const { inspectFrameFolder } = require("../../../src/main/services/sprite-generator.js")
-const { createActionImportService } = require("../../../src/main/services/action-import-service.js")
-const { createActionService: createHostActionService } = require("../../../src/main/services/action-service.js")
-const { getLegacyPetAnimations } = require("../../../src/main/pet-pack/loader.js")
-const SAFE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/
+const ERROR_CODE_SET = new Set(ERROR_CODES)
 
-function id(value, field = "Action id") {
-	if (typeof value !== "string" || !SAFE_ID.test(value)) throw new ApiError("VALIDATION_FAILED", `${field} is invalid`)
+function requiredString(value, field) {
+	if (typeof value !== "string" || value.trim().length === 0 || value.length > 256) {
+		throw new ApiError("VALIDATION_FAILED", `${field} is required`)
+	}
 	return value
 }
-function clone(value) { return JSON.parse(JSON.stringify(value)) }
-function readJson(file) {
-	try { return JSON.parse(fs.readFileSync(file, "utf8")) } catch (_) { return { defaultAction: "", clickAction: "", actions: [], triggerProposalInbox: [], triggerRules: [] } }
-}
-function translate(error) {
-	if (error instanceof ApiError) return error
-	const message = String(error?.message || error || "Action operation failed")
-	const code = /does not exist|not found|no longer available/i.test(message) ? "NOT_FOUND"
-		: /already exists|last action|read-only|not (?:pending|active)/i.test(message) ? "CONFLICT"
-		: /invalid|unsupported|required|must be|does not match/i.test(message) ? "VALIDATION_FAILED" : "INTERNAL"
-	return new ApiError(code, message, { status: code === "INTERNAL" ? 500 : undefined, cause: error })
-}
-function sourcePath(value) {
-	if (typeof value !== "string" || !path.isAbsolute(value)) throw new ApiError("VALIDATION_FAILED", "Frame folder path must be absolute")
-	let real
-	try { real = fs.realpathSync(value) } catch (_) { throw new ApiError("VALIDATION_FAILED", "Frame folder does not exist") }
-	try { if (fs.lstatSync(value).isSymbolicLink()) throw new ApiError("VALIDATION_FAILED", "Frame folder must not be a symbolic link") } catch (error) {
-		if (error instanceof ApiError) throw error
-		throw new ApiError("VALIDATION_FAILED", "Frame folder does not exist")
-	}
-	if (!fs.statSync(real).isDirectory()) throw new ApiError("VALIDATION_FAILED", "Frame folder must be a directory")
-	return real
+
+function object(value = {}) {
+	if (!value || typeof value !== "object" || Array.isArray(value)) throw new ApiError("VALIDATION_FAILED", "Actions input must be an object")
+	return value
 }
 
-export function createActionService({ root, jobs, shell, now = Date.now, emit } = {}) {
-	if (typeof root !== "string" || !path.isAbsolute(root)) throw new TypeError("action root must be absolute")
-	const configPath = path.join(root, "cat_anime", "animations.json")
-	const importer = createActionImportService({ framesRoot: path.join(root, "cat_anime", "flames"), spritesDir: path.join(root, "cat_anime", "sprites"), configPath })
-	const host = createHostActionService({
-		projectRoot: root,
-		loadLegacyAnimations: () => getLegacyPetAnimations({ configPath }),
-		saveLegacyAnimations: (config) => { fs.mkdirSync(path.dirname(configPath), { recursive: true }); fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8") },
-	})
-	let selection = null
-	const publish = () => emit?.(EVENT_ACTIONS_CHANGED, { at: now(), actions: host.getConfig().actions ?? [] })
-	const get = () => clone(host.getConfig())
+export function createActionService({ shell, jobs, emit, now = Date.now } = {}) {
+	if (typeof shell?.request !== "function") throw new TypeError("Shell Actions bridge required")
 
-	const inspect = async (folder, actionId) => {
-		const real = sourcePath(folder)
-		const inspection = await inspectFrameFolder(real)
-		if (actionId && host.getConfig().actions.some((item) => item.id === actionId)) { inspection.errors = [...inspection.errors, `Action ID already exists: ${actionId}`]; inspection.valid = false }
-		if (!inspection.valid) throw new ApiError("ACTION_FRAMES_MISSING", inspection.errors.join("; ") || "No valid action frames", { status: 400, details: { path: real, inspection } })
-		return { path: real, folderName: path.basename(real), actionId: actionId || path.basename(real), inspection }
+	const authority = async (operation, payload = {}) => {
+		let envelope
+		try {
+			envelope = await shell.request(
+				{ type: "actions.request", operation, payload },
+				{ expectedType: "actions.result", expectedOperation: operation },
+			)
+		} catch (cause) {
+			if (cause instanceof ApiError) throw cause
+			throw new ApiError("BACKEND_UNAVAILABLE", "Shell Actions authority unavailable", { cause })
+		}
+		const body = envelope?.body
+		if (body?.type !== "actions.result" || body.operation !== operation || typeof body.ok !== "boolean") {
+			throw new ApiError("INTERNAL", "Shell Actions response is invalid")
+		}
+		if (!body.ok) {
+			const code = ERROR_CODE_SET.has(body.error?.code) ? body.error.code : "INTERNAL"
+			throw new ApiError(code, body.error?.message || "Shell Actions operation failed", {
+				...(code === "ACTION_FRAMES_MISSING" ? { status: 400 } : {}),
+			})
+		}
+		return body.result
 	}
-	const requestFolder = async () => {
-		if (!shell?.request) throw new ApiError("BACKEND_UNAVAILABLE", "dialog service unavailable")
-		const reply = await shell.request({ type: "dialog.request", mode: "directory" }, { expectedType: "dialog.result" })
-		const paths = reply?.body?.paths
-		if (paths === null) return null
-		if (!Array.isArray(paths) || typeof paths[0] !== "string") throw new ApiError("VALIDATION_FAILED", "dialog returned no frame folder")
-		return paths[0]
-	}
-	const inspectFrames = async (folder, actionId) => {
-		const selected = folder ?? await requestFolder()
-		if (selected === null) return { canceled: true }
-		const result = await inspect(selected, actionId)
-		selection = result
+	const mutate = async (operation, payload) => {
+		const result = await authority(operation, payload)
+		if (result?.ok !== false) emit?.(EVENT_ACTIONS_CHANGED, { at: now(), actions: result?.animations?.actions ?? [] })
 		return result
 	}
-	const importFrames = async (folder, actionId, label) => {
-		const selected = folder ?? selection?.path ?? await requestFolder()
-		if (selected === null) return { canceled: true }
-		if (!selected) throw new ApiError("VALIDATION_FAILED", "Frame folder selection is required")
-		const result = await inspect(selected, actionId)
-		const resolvedId = id(actionId || result.actionId)
+	const list = () => authority("get")
+	const selection = (input = {}) => ({ selectionId: requiredString(input.selectionId, "selectionId"), ...(input.actionId ? { actionId: requiredString(input.actionId, "actionId") } : {}) })
+
+	const importFrames = (input = {}) => {
+		object(input)
+		const payload = { ...selection(input), actionId: requiredString(input.actionId, "actionId") }
+		if (input.label !== undefined) {
+			if (typeof input.label !== "string" || input.label.length > 256) throw new ApiError("VALIDATION_FAILED", "Action label is invalid")
+			payload.label = input.label
+		}
 		if (!jobs?.insert) throw new ApiError("BACKEND_UNAVAILABLE", "Job service unavailable")
-		const job = jobs.insert({ id: `actions-import-frames:${resolvedId}:${now()}`, kind: "actions.import-frames", input: { path: result.path, actionId: resolvedId, ...(label ? { label } : {}) }, resourceKey: `actions:${resolvedId}` })
-		return { jobId: job.id, actionId: resolvedId, inspection: result.inspection }
+		const job = jobs.insert({
+			id: `actions-import:${randomUUID()}`,
+			kind: "actions.import-frames",
+			input: payload,
+			resourceKey: "actions:import",
+		})
+		return { jobId: job.id }
 	}
-	const runImportFrames = async ({ path: sourceDir, actionId, label, signal, report } = {}) => {
-		if (signal?.aborted) throw signal.reason ?? new Error("Job canceled")
-		report?.({ phase: "generating", percent: 25, message: "Generating action sprites" })
-		const result = await importer.importActionFrames({ sourceDir, actionId, label })
-		if (signal?.aborted) throw signal.reason ?? new Error("Job canceled")
-		publish()
-		return result
+	const runImportFrames = async ({ selectionId, actionId, label, signal, report, finalize } = {}) => {
+		if (signal?.aborted) throw signal.reason ?? new ApiError("CONFLICT", "Action import canceled")
+		if (typeof finalize !== "function") throw new ApiError("INTERNAL", "Action import requires a finalization boundary")
+		const payload = { ...selection({ selectionId, actionId }), actionId: requiredString(actionId, "actionId"), ...(label === undefined ? {} : { label }) }
+		report?.({ phase: "importing", percent: 10, message: "Preparing action import" })
+		// The host writes active-pack assets. Lock cancellation before dispatch.
+		return finalize(() => mutate("import", payload))
 	}
-	const play = async (actionId, source = "http:actions") => {
-		const normalized = id(actionId)
-		if (!host.getConfig().actions.some((item) => item.id === normalized)) throw new ApiError("NOT_FOUND", `Action not found: ${normalized}`)
-		const reply = await shell?.request?.({ type: "pet.command.request", operation: "playAction", payload: { actionId: normalized, source } }, { expectedType: "pet.command.result" })
-		if (reply?.body?.ok !== true) throw new ApiError("BACKEND_UNAVAILABLE", reply?.body?.error || "Shell pet command failed")
-		return reply.body.result
-	}
-	const mutate = (fn) => { try { const result = fn(); publish(); return clone(result) } catch (error) { throw translate(error) } }
-	const withAnimations = (fn) => mutate(() => ({ ...fn(), animations: host.getConfig() }))
 	return {
-		list: get, get, play, inspect: inspectFrames, reinspect: inspectFrames, importFrames, runImportFrames,
-		clearSelection: () => { selection = null; return { ok: true } },
-		updateConfig: (patch = {}) => mutate(() => host.applyCreatorActionMutation(patch)),
-		update: (actionId, patch = {}) => mutate(() => {
-			const normalized = id(actionId)
-			const current = readJson(configPath)
-			if (!current.actions.some((item) => item.id === normalized)) throw new ApiError("NOT_FOUND", `Action not found: ${normalized}`)
-			const next = { ...current, actions: current.actions.map((item) => item.id === normalized ? { ...item, ...patch, id: normalized } : item) }
-			fs.mkdirSync(path.dirname(configPath), { recursive: true })
-			fs.writeFileSync(configPath, `${JSON.stringify(next, null, 2)}\n`, "utf8")
-			return next
-		}),
-		remove: async (actionId) => { try { const result = await importer.deleteAction(id(actionId)); publish(); return clone({ animations: result?.animations ?? host.getConfig(), ...result }) } catch (error) { throw translate(error) } },
-		previewProposal: (input) => host.previewTriggerProposal(input),
-		submitProposal: (input) => withAnimations(() => host.submitTriggerProposal(input)),
-		acceptProposal: (proposalId) => withAnimations(() => host.acceptTriggerProposalItem(id(proposalId, "Proposal id"))),
-		rejectProposal: (proposalId, reason) => withAnimations(() => host.rejectTriggerProposalItem(id(proposalId, "Proposal id"), reason)),
-		updateRule: (ruleId, patch) => withAnimations(() => host.updateTriggerRule(id(ruleId, "Rule id"), patch)),
-		deleteRule: (ruleId) => withAnimations(() => host.deleteTriggerRule(id(ruleId, "Rule id"))),
+		list,
+		get: list,
+		inspect: (input = {}) => authority("inspect", object(input)),
+		reinspect: (input = {}) => authority("reinspect", selection(object(input))),
+		clearSelection: (input = {}) => authority("clear-selection", selection(object(input))),
+		importFrames,
+		runImportFrames,
+		updateConfig: (input = {}) => mutate("save-config", object(input)),
+		remove: (actionId) => mutate("remove", { actionId: requiredString(actionId, "actionId") }),
+		previewProposal: (input = {}) => authority("preview-proposal", object(input)),
+		submitProposal: (input = {}) => mutate("submit-proposal", object(input)),
+		acceptProposal: (proposalId) => mutate("accept-proposal", { proposalId: requiredString(proposalId, "proposalId") }),
+		rejectProposal: (proposalId, reason) => mutate("reject-proposal", { proposalId: requiredString(proposalId, "proposalId"), ...(reason === undefined ? {} : { reason }) }),
+		updateRule: (ruleId, patch = {}) => mutate("update-rule", { ...object(patch), ruleId: requiredString(ruleId, "ruleId") }),
+		deleteRule: (ruleId) => mutate("delete-rule", { ruleId: requiredString(ruleId, "ruleId") }),
 	}
 }

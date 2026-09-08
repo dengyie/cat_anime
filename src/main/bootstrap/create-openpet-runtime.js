@@ -139,6 +139,9 @@ const createOpenPetRuntime = ({
     broadcastActivePetPackChanged: () => {},
     handlePetPackRequest: async () => {
       throw Object.assign(new Error('Shell Pet Pack authority is not ready'), { code: 'BACKEND_UNAVAILABLE' })
+    },
+    handleActionsRequest: async () => {
+      throw Object.assign(new Error('Shell Actions authority is not ready'), { code: 'BACKEND_UNAVAILABLE' })
     }
   }
 
@@ -162,10 +165,7 @@ const createOpenPetRuntime = ({
       return catalogSidecarBridge.handle(request)
     },
     onPetPackRequest: (request) => ipcRuntimeHelpers.handlePetPackRequest(request),
-    onActionsDiagnostics: () => triggerRuleRuntimeService?.getDiagnostics?.() || {
-      currentState: { actionId: '' },
-      decisions: []
-    },
+    onActionsRequest: (request) => ipcRuntimeHelpers.handleActionsRequest(request),
     onReady: async () => {
       try {
         await settingsSidecarBridge?.hydrate()
