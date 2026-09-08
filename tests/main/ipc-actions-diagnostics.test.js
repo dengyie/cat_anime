@@ -176,7 +176,7 @@ test('actions:get returns trigger runtime diagnostics alongside the actions conf
     }
   })
 
-  registerIpcHandlers({
+  const runtime = registerIpcHandlers({
     ...createRequiredServices(),
     ipcMainService: ipcMain,
     triggerRuleRuntimeService: {
@@ -197,7 +197,7 @@ test('actions:get returns trigger runtime diagnostics alongside the actions conf
     }
   })
 
-  const result = await ipcMain.handlers.get(IPC.ACTIONS_GET)()
+  const result = await runtime.handleActionsRequest({ operation: 'get' })
 
   assert.deepEqual(result.triggerRuntimeDiagnostics, {
     currentState: { actionId: 'idle' },
@@ -227,7 +227,7 @@ test('actions:save-config returns animations with trigger runtime diagnostics af
     }
   })
 
-  registerIpcHandlers({
+  const runtime = registerIpcHandlers({
     ...createRequiredServices(),
     ipcMainService: ipcMain,
     triggerRuleRuntimeService: {
@@ -252,7 +252,7 @@ test('actions:save-config returns animations with trigger runtime diagnostics af
     }
   })
 
-  const result = await ipcMain.handlers.get(IPC.ACTIONS_SAVE_CONFIG)(null, {
+  const result = await runtime.handleActionsRequest({ operation: 'save-config', payload: {
     defaultAction: 'idle',
     clickAction: 'wave',
     triggerRules: [
@@ -271,7 +271,7 @@ test('actions:save-config returns animations with trigger runtime diagnostics af
         updatedAt: '2026-06-29T08:00:00.000Z'
       }
     ]
-  })
+  } })
 
   assert.deepEqual(result.animations.triggerRuntimeDiagnostics, {
     currentState: { actionId: 'idle' },

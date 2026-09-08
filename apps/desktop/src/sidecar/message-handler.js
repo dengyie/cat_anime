@@ -36,6 +36,7 @@ function normalizeCatalogRequest(value) {
 // A backend message is untrusted input at this boundary: only these explicitly
 // capabilities may reach Electron/PetService.
 const BACKEND_TO_SHELL_TYPES = Object.freeze([
+	"actions.request",
 	"pet.command.request",
 	"pet.say",
 	"pet.playAction",
@@ -105,6 +106,9 @@ function parseEnvelope(raw) {
 	if (!BACKEND_TO_SHELL_TYPES.includes(body.type)) return fail("unknown-type", body.type)
 
 	switch (body.type) {
+		case "actions.request":
+			if (typeof body.operation !== "string" || body.payload === null || typeof body.payload !== "object" || Array.isArray(body.payload)) return fail("bad-body", "actions.request")
+			break
 		case "pet.command.request":
 			if (!["say", "playAction", "setEvent"].includes(body.operation) || body.payload === null || typeof body.payload !== "object" || Array.isArray(body.payload)) return fail("bad-body", "pet.command.request")
 			break
@@ -161,7 +165,7 @@ function parseEnvelope(raw) {
 	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body: normalizedBody } }
 }
 
-function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, onPetPackRequest, productionService } = {}) {
+function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, onPetPackRequest, onActionsRequest, productionService } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
@@ -199,6 +203,27 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: responseBody })
 					return true
 				}
+				case "actions.request": {
+					const { actionsRequestSchema } = await import("@openpet/contracts")
+					const request = actionsRequestSchema.safeParse(body)
+					if (!request.success) {
+						log(logger, "warn", "invalid Actions bridge request", { operation: body.operation })
+						return false
+					}
+					let responseBody
+					try {
+						if (typeof onActionsRequest !== "function") throw Object.assign(new Error("Shell Actions authority unavailable"), { code: "BACKEND_UNAVAILABLE" })
+						const result = await onActionsRequest({ operation: request.data.operation, payload: structuredClone(request.data.payload) })
+						responseBody = { type: "actions.result", operation: body.operation, ok: true, result }
+					} catch (error) {
+						responseBody = { type: "actions.result", operation: body.operation, ok: false, error: {
+							code: await normalizePetPackErrorCode(error?.code),
+							message: sanitizeLogText(error?.message || String(error)),
+						} }
+					}
+					send({ v: BRIDGE_PROTOCOL_VERSION, id: raw.id, at: Date.now(), body: responseBody })
+					return true
+				}
 				case "pet.command.request": {
 					let result
 					try {
@@ -213,7 +238,7 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 							actionId: body.payload.actionId,
 							source: body.payload.source,
 						})
-						else result = await petService?.setEvent?.({
+						else if (body.operation === "setEvent") result = await petService?.setEvent?.({
 							type: body.payload.type,
 							message: body.payload.message,
 							ttlMs: body.payload.ttlMs,

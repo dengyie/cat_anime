@@ -26,6 +26,7 @@ const { registerSettingsIpc } = require('./ipc/register-settings-ipc')
 const { registerServiceIpc } = require('./ipc/register-service-ipc')
 const { registerSystemIpc } = require('./ipc/register-system-ipc')
 const { createPetChatFacade } = require('./ipc/pet-chat-facade')
+const { createActionsSidecarBridge } = require('./ipc/actions-sidecar-bridge')
 const {
   collectCustomCursorAssetPaths,
   createPetRendererSettings,
@@ -40,9 +41,6 @@ const {
   createAiMemoryProfileView,
   createAiPersonaDraftView,
   createAiPersonaProfileView,
-  createActionFrameImportResult,
-  createActionTriggerProposalPreviewResult,
-  createActionsMutationResult,
   createImageGenerationApiKeyResult,
   createImageGenerationConfigView,
   createImageGenerationHealthCheckResult,
@@ -142,9 +140,6 @@ const resolvePetSaySourceSurface = ({ source = '', requestSource = '' } = {}) =>
  */
 const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiService, aiTalkService = null, hatchPetAgentService, petUtteranceLogService = null, petBubbleChatWindowService = null, imageGenerationModelService, behaviorOrchestratorService, triggerRuleRuntimeService = null, creatorStudioDefaultFlowService = null, creatorWorkflowService = null, pluginService, pluginInstallService, pluginGithubImportService, localHttpService, actionService, actionImportService, cursorAssetService, systemCursorService, appLogService, applyWindowScale, applyPetViewport = () => {},
   clampToWorkArea, getMovementState, createSettingsWindow, petMovementPolicy, petChatWindowService = null, sidecarRuntimeCoordinator = null, browserWindowService = BrowserWindow, dialogService = dialog, ipcMainService = ipcMain, screenService = screen, appService = app, showContextMenuWindow = showPetContextMenuWindow }) => {
-  let pendingActionFrameSelection = null
-
-  const createSelectionId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
   const showOpenDialogForEvent = (event, options) => {
     const parentWindow = event?.sender && browserWindowService?.fromWebContents?.(event.sender)
@@ -165,6 +160,15 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
   const refreshTriggerRuleRuntime = () => {
     triggerRuleRuntimeService?.refresh?.()
   }
+
+  const actionsSidecarBridge = createActionsSidecarBridge({
+    actionService, actionImportService, petService, getPetWindow,
+    getActivePackId: () => petPackService.listPacks()?.activePackId || '',
+    showOpenDialogForEvent,
+    createActionsViewState: (animations = null) => createActionsViewState(petService, triggerRuleRuntimeService, animations),
+    reloadAndSendAnimations, refreshTriggerRuleRuntime, recordAppLog
+  })
+  ipcMainService.handle(IPC.ACTIONS_INSPECT_FRAMES, (event, payload) => actionsSidecarBridge.inspect(event, payload))
 
   const petChatFacade = createPetChatFacade({
     getPetWindow,
@@ -358,18 +362,6 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     }
   }
 
-  const getPendingActionFrameSelection = (selectionId) => {
-    if (!pendingActionFrameSelection || pendingActionFrameSelection.id !== selectionId) {
-      throw new Error('Selected frame folder is no longer available')
-    }
-    return pendingActionFrameSelection
-  }
-
-  const inspectPendingActionFrameSelection = async ({ selectionId, actionId }) => {
-    const selection = getPendingActionFrameSelection(selectionId)
-    const result = await actionImportService.inspectActionFrames({ sourceDir: selection.sourceDir, actionId })
-    return { selectionId: selection.id, ...result }
-  }
 
   petService.onSay?.((payload) => {
     petChatFacade.handlePetSay(payload)
@@ -696,229 +688,6 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     recordAppLog
   })
 
-  ipcMainService.handle(IPC.ACTIONS_GET, () => createActionsViewState(petService, triggerRuleRuntimeService))
-
-  ipcMainService.handle(IPC.ACTIONS_INSPECT_FRAMES, async (event, payload) => {
-    const selected = await showOpenDialogForEvent(event, {
-      title: '选择动作帧文件夹',
-      properties: ['openDirectory']
-    })
-    if (selected.canceled || !selected.filePaths[0]) return { canceled: true }
-
-    const selectionId = createSelectionId()
-    const sourceDir = selected.filePaths[0]
-    const result = await actionImportService.inspectActionFrames({ sourceDir, actionId: payload.actionId })
-    pendingActionFrameSelection = { id: selectionId, sourceDir }
-    return { canceled: false, selectionId, ...result }
-  })
-
-  ipcMainService.handle(IPC.ACTIONS_REINSPECT_FRAMES, async (_event, payload) => {
-    return inspectPendingActionFrameSelection({ selectionId: payload.selectionId, actionId: payload.actionId })
-  })
-
-  ipcMainService.handle(IPC.ACTIONS_CLEAR_FRAME_SELECTION, (_event, payload) => {
-    if (!payload?.selectionId || pendingActionFrameSelection?.id === payload.selectionId) {
-      pendingActionFrameSelection = null
-    }
-    return { ok: true }
-  })
-
-  ipcMainService.handle(IPC.ACTIONS_IMPORT_FRAMES, async (_event, payload) => {
-    const selection = getPendingActionFrameSelection(payload.selectionId)
-    const inspectionResult = await inspectPendingActionFrameSelection({ selectionId: payload.selectionId, actionId: payload.actionId })
-    if (!inspectionResult.inspection.valid) {
-      return createActionFrameImportResult({ ok: false, inspectionResult })
-    }
-
-    const result = await actionImportService.importActionFrames({
-      sourceDir: selection.sourceDir,
-      actionId: payload.actionId,
-      label: payload.label
-    })
-    pendingActionFrameSelection = null
-    reloadAndSendAnimations(getPetWindow, petService)
-    return createActionFrameImportResult(
-      { ok: true, canceled: false, result },
-      createActionsViewState(petService, triggerRuleRuntimeService)
-    )
-  })
-
-  ipcMainService.handle(IPC.ACTIONS_SAVE_CONFIG, async (_event, payload) => {
-    if (payload?.triggerProposal) {
-      if (!actionService?.acceptTriggerProposal) throw new Error('Action trigger proposal acceptance is not available')
-      const triggerProposal = actionService.acceptTriggerProposal(payload.triggerProposal)
-      const animations = triggerProposal.applied
-        ? reloadAndSendAnimations(getPetWindow, petService)
-        : petService.getPreviewAnimations()
-      if (triggerProposal.applied) refreshTriggerRuleRuntime()
-      recordAppLog({
-        scope: 'actions',
-        level: 'info',
-        actor: 'user',
-        event: 'actions.trigger-proposal.accepted',
-        message: 'Action trigger proposal accepted',
-        details: {
-          actionId: triggerProposal.actionId,
-          type: triggerProposal.type,
-          binding: triggerProposal.binding,
-          applied: triggerProposal.applied,
-          code: triggerProposal.code,
-          sourcePluginId: triggerProposal.sourcePluginId || '',
-          sourceRunId: triggerProposal.sourceRunId || '',
-          sourceCommandId: triggerProposal.sourceCommandId || ''
-        }
-      })
-      return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService, animations), { triggerProposal })
-    }
-    if (!actionService?.applyCreatorActionMutation) throw new Error('Action config persistence is not available')
-    actionService.applyCreatorActionMutation(payload)
-    const animations = reloadAndSendAnimations(getPetWindow, petService)
-    refreshTriggerRuleRuntime()
-    return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService, animations))
-  })
-
-  ipcMainService.handle(IPC.ACTIONS_PREVIEW_TRIGGER_PROPOSAL, async (_event, payload) => {
-    if (!actionService?.previewTriggerProposal) throw new Error('Action trigger proposal preview is not available')
-    const triggerProposal = actionService.previewTriggerProposal(payload)
-    return createActionTriggerProposalPreviewResult(triggerProposal)
-  })
-
-  ipcMainService.handle(IPC.ACTIONS_SUBMIT_TRIGGER_PROPOSAL, async (_event, payload) => {
-    if (!actionService?.submitTriggerProposal) throw new Error('Action trigger proposal inbox is not available')
-    const result = actionService.submitTriggerProposal(payload)
-    recordAppLog({
-      scope: 'actions',
-      level: 'info',
-      actor: 'plugin',
-      event: 'actions.trigger-proposal.submitted',
-      message: 'Action trigger proposal submitted',
-      details: {
-        proposalId: result.proposal.id,
-        actionId: result.proposal.actionId,
-        type: result.proposal.type,
-        sourcePluginId: result.proposal.sourcePluginId || '',
-        sourceRunId: result.proposal.sourceRunId || '',
-        sourceCommandId: result.proposal.sourceCommandId || ''
-      }
-    })
-    return createActionsMutationResult(
-      createActionsViewState(petService, triggerRuleRuntimeService, result.animations),
-      { proposal: result.proposal }
-    )
-  })
-
-  ipcMainService.handle(IPC.ACTIONS_ACCEPT_TRIGGER_PROPOSAL, async (_event, payload) => {
-    if (!actionService?.acceptTriggerProposalItem) throw new Error('Action trigger proposal inbox is not available')
-    const result = actionService.acceptTriggerProposalItem(payload?.proposalId)
-    const animations = result.triggerProposal?.applied
-      ? reloadAndSendAnimations(getPetWindow, petService)
-      : result.animations
-    if (result.triggerProposal?.applied) refreshTriggerRuleRuntime()
-    recordAppLog({
-      scope: 'actions',
-      level: 'info',
-      actor: 'user',
-      event: 'actions.trigger-proposal.inbox.accepted',
-      message: 'Action trigger proposal accepted from inbox',
-      details: {
-        proposalId: result.proposal.id,
-        actionId: result.proposal.actionId,
-        type: result.proposal.type,
-        applied: Boolean(result.triggerProposal?.applied),
-        code: result.triggerProposal?.code || ''
-      }
-    })
-    return createActionsMutationResult(
-      createActionsViewState(petService, triggerRuleRuntimeService, animations),
-      { proposal: result.proposal, triggerProposal: result.triggerProposal }
-    )
-  })
-
-  ipcMainService.handle(IPC.ACTIONS_REJECT_TRIGGER_PROPOSAL, async (_event, payload) => {
-    if (!actionService?.rejectTriggerProposalItem) throw new Error('Action trigger proposal inbox is not available')
-    const result = actionService.rejectTriggerProposalItem(payload?.proposalId, payload?.reason)
-    recordAppLog({
-      scope: 'actions',
-      level: 'info',
-      actor: 'user',
-      event: 'actions.trigger-proposal.inbox.rejected',
-      message: 'Action trigger proposal rejected from inbox',
-      details: {
-        proposalId: result.proposal.id,
-        actionId: result.proposal.actionId,
-        type: result.proposal.type
-      }
-    })
-    return createActionsMutationResult(
-      createActionsViewState(petService, triggerRuleRuntimeService, result.animations),
-      { proposal: result.proposal }
-    )
-  })
-
-  ipcMainService.handle(IPC.ACTIONS_UPDATE_TRIGGER_RULE, async (_event, payload) => {
-    const supportsRuleUpdates = typeof actionService?.updateTriggerRule === 'function'
-    const supportsStatusUpdates = typeof actionService?.setTriggerRuleStatus === 'function'
-    if (!supportsRuleUpdates && !supportsStatusUpdates) throw new Error('Action trigger rule management is not available')
-    const result = supportsRuleUpdates
-      ? actionService.updateTriggerRule(payload?.ruleId, {
-          ...(payload?.status !== undefined ? { status: payload.status } : {}),
-          ...(payload?.ruleSpec && typeof payload.ruleSpec === 'object' ? { ruleSpec: payload.ruleSpec } : {})
-        })
-      : actionService.setTriggerRuleStatus(payload?.ruleId, payload?.status)
-    recordAppLog({
-      scope: 'actions',
-      level: 'info',
-      actor: 'user',
-      event: 'actions.trigger-rule.updated',
-      message: 'Action trigger rule status updated',
-      details: {
-        ruleId: result.rule.id,
-        actionId: result.rule.actionId,
-        type: result.rule.type,
-        status: result.rule.status,
-        updatedFields: [
-          ...(payload?.status !== undefined ? ['status'] : []),
-          ...(payload?.ruleSpec && typeof payload.ruleSpec === 'object' ? ['ruleSpec'] : [])
-        ]
-      }
-    })
-    refreshTriggerRuleRuntime()
-    return {
-      animations: createActionsViewState(petService, triggerRuleRuntimeService, result.animations),
-      rule: result.rule
-    }
-  })
-
-  ipcMainService.handle(IPC.ACTIONS_DELETE_TRIGGER_RULE, async (_event, payload) => {
-    if (!actionService?.deleteTriggerRule) throw new Error('Action trigger rule management is not available')
-    const result = actionService.deleteTriggerRule(payload?.ruleId)
-    recordAppLog({
-      scope: 'actions',
-      level: 'info',
-      actor: 'user',
-      event: 'actions.trigger-rule.deleted',
-      message: 'Action trigger rule deleted',
-      details: {
-        ruleId: result.rule.id,
-        actionId: result.rule.actionId,
-        type: result.rule.type,
-        status: result.rule.status
-      }
-    })
-    refreshTriggerRuleRuntime()
-    return {
-      animations: createActionsViewState(petService, triggerRuleRuntimeService, result.animations),
-      rule: result.rule
-    }
-  })
-
-  ipcMainService.handle(IPC.ACTIONS_DELETE, async (_event, payload) => {
-    await actionImportService.deleteAction(payload.actionId)
-    reloadAndSendAnimations(getPetWindow, petService)
-    refreshTriggerRuleRuntime()
-    return createActionsMutationResult(createActionsViewState(petService, triggerRuleRuntimeService))
-  })
-
   ipcMainService.handle(IPC.PET_PACKS_INSPECT_DIRECTORY, async (event) => {
     const selected = await showOpenDialogForEvent(event, {
       title: '选择 Pet Pack 文件夹或 Codex Pet 包',
@@ -1082,7 +851,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   return {
     broadcastActivePetPackChanged: petChatFacade.broadcastActivePetPackChanged,
-    handlePetPackRequest
+    handlePetPackRequest,
+    handleActionsRequest: actionsSidecarBridge.handle
   }
 }
 

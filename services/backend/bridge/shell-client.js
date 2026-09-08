@@ -49,20 +49,21 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 			if (body.ok && !Object.hasOwn(body, "result")) return "catalog.result has no result"
 			if (!body.ok && typeof body.error !== "string") return "catalog.result has no error"
 		}
-		if (expectedType === "pet-packs.result") {
+		if (expectedType === "pet-packs.result" || expectedType === "actions.result") {
 			const body = envelope.body
 			if (body.operation !== expectedOperation) {
-				return `unexpected Pet Pack operation: expected ${expectedOperation}, got ${String(body.operation)}`
+				return `unexpected ${expectedType} operation: expected ${expectedOperation}, got ${String(body.operation)}`
 			}
-			if (typeof body.ok !== "boolean") return "pet-packs.result has an invalid ok field"
-			if (body.ok && body.error !== undefined) return "successful pet-packs.result must not include an error"
+			if (typeof body.ok !== "boolean") return `${expectedType} has an invalid ok field`
+			if (body.ok && body.error !== undefined) return `successful ${expectedType} must not include an error`
+			if (expectedType === "actions.result" && body.ok && !Object.hasOwn(body, "result")) return "actions.result has no result"
 			if (!body.ok) {
 				if (body.error === null || typeof body.error !== "object" || Array.isArray(body.error)) {
-					return "failed pet-packs.result has no structured error"
+					return `failed ${expectedType} has no structured error`
 				}
-				if (!ERROR_CODES.includes(body.error.code)) return "pet-packs.result has an invalid error code"
+				if (!ERROR_CODES.includes(body.error.code)) return `${expectedType} has an invalid error code`
 				if (typeof body.error.message !== "string" || body.error.message.length === 0) {
-					return "pet-packs.result has an invalid error message"
+					return `${expectedType} has an invalid error message`
 				}
 			}
 		}
@@ -153,21 +154,16 @@ export function createShellClient({ send, exit = (code) => process.exit(code), l
 
 	function request(body, options = {}) {
 		const timeoutMs = options.timeoutMs ?? DIALOG_RESULT_TIMEOUT_MS
-		// Keep legacy request callers permissive, but bind settings host-effect
-		// and provider-secret/Catalog requests to their one legal response shape. Otherwise any allowlisted
-		// Shell envelope reusing the request id could settle the wrong operation.
-		const expectedType = options.expectedType ?? (
-			body?.type === "settings.apply.request"
-				? "settings.apply.result"
-				: body?.type === "secrets.persist.request"
-					? "secrets.persist.result"
-					: body?.type === "catalog.request"
-						? "catalog.result"
-						: body?.type === "pet-packs.request"
-							? "pet-packs.result"
-							: body?.type === "pet.command.request" ? "pet.command.result" : null
-		)
-		const expectedOperation = options.expectedOperation ?? (body?.type === "pet-packs.request" ? body.operation : null)
+		// Bind host requests to their response type as well as their envelope id.
+		const expectedType = options.expectedType ?? ({
+			"settings.apply.request": "settings.apply.result",
+			"secrets.persist.request": "secrets.persist.result",
+			"catalog.request": "catalog.result",
+			"pet-packs.request": "pet-packs.result",
+			"actions.request": "actions.result",
+			"pet.command.request": "pet.command.result",
+		})[body?.type] ?? null
+		const expectedOperation = options.expectedOperation ?? (["pet-packs.request", "actions.request"].includes(body?.type) ? body.operation : null)
 		const envelope = dispatch(body, true)
 		if (envelope === null) return Promise.reject(new Error("shellClient 已销毁"))
 

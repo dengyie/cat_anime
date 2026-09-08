@@ -326,11 +326,8 @@ runtime.petPacks = createPetPackService({
 })
 registerPetPackRoutes(router, { packs: runtime.petPacks })
 runtime.actions = createActionService({
-	root: join(dirname(fileURLToPath(import.meta.url)), "../.."),
-	db: runtime.db,
+	shell,
 	jobs: { insert: (input) => runtime.enqueueJob?.(input) },
-	dialog: shell,
-	logger,
 	emit: (name, payload) => eventHub.publish(name, payload),
 })
 registerActionRoutes(router, { actions: runtime.actions })
@@ -440,7 +437,7 @@ if (!runtime.degraded && runtime.jobs) {
 			},
 			"pet-pack.import": async ({ job, report, signal, finalize }) => runtime.petPacks.runImport({ ...job.input, signal, report, finalize }),
 			"pet-pack.export": async ({ job, report, signal, finalize }) => runtime.petPacks.runExport({ ...job.input, signal, report, finalize }),
-			"actions.import-frames": async ({ job, report, signal }) => runtime.actions.runImportFrames({ ...job.input, signal, report }),
+			"actions.import-frames": async ({ job, report, signal, finalize }) => runtime.actions.runImportFrames({ ...job.input, signal, report, finalize }),
 			...createPluginJobHandlers({
 				db: runtime.db,
 				plugins: runtime.plugins,

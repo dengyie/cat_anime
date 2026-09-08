@@ -66,6 +66,10 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 				assert.equal(operation, "list")
 				return { activePackId: "legacy-cat", packs: [] }
 			},
+			onActionsRequest: ({ operation }) => {
+				assert.equal(operation, "get")
+				return { defaultAction: "idle", clickAction: "idle", actions: [{ id: "idle" }] }
+			},
 			secretService: {
 				setSecret: (entry) => persistedSecrets.push(entry),
 				deleteSecret: (id) => persistedSecrets.push({ deleted: id }),
@@ -74,7 +78,7 @@ test("sidecar routes use runtime dependencies initialized before ready", async (
 		})
 		backend.child.on("message", (envelope) => {
 			if (envelope?.body?.type === "settings.apply.request") applyValues = envelope.body.values
-			if (["settings.apply.request", "secrets.persist.request", "catalog.request", "pet-packs.request"].includes(envelope?.body?.type)) {
+			if (["settings.apply.request", "secrets.persist.request", "catalog.request", "pet-packs.request", "actions.request"].includes(envelope?.body?.type)) {
 				void shellHandler.handle(envelope)
 			}
 		})
