@@ -247,10 +247,13 @@ for (let i = 1; i <= 10; i += 1) {
 }
 const registrySrc = readText("services/backend/routes/registry.js")
 if (!registrySrc.includes("IMPLEMENTED_API_ROUTES")) fail("routes", "找不到 IMPLEMENTED_API_ROUTES 注册表")
-const registryRoutes = new Set(quoted(registrySrc).filter((value) => /^(GET|POST|PUT|PATCH|DELETE) \//.test(value)))
+let registryRoutes = new Set()
 let actualRoutes = []
 try {
   const registryModule = await import(new URL("../services/backend/routes/registry.js", import.meta.url))
+  if (!Array.isArray(registryModule.IMPLEMENTED_API_ROUTES)) throw new Error("IMPLEMENTED_API_ROUTES must be an array")
+  registryRoutes = new Set(registryModule.IMPLEMENTED_API_ROUTES)
+  if (registryRoutes.size !== registryModule.IMPLEMENTED_API_ROUTES.length) fail("routes", "注册表包含重复路由")
   actualRoutes = registryModule.registeredImplementedRoutes()
 } catch (error) {
   fail("routes", `无法执行实际路由注册:${String(error)}`)

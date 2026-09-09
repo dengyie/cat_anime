@@ -168,7 +168,7 @@ test('registerPetRuntimeIpc wires pet movement and focus handlers', () => {
   assert.equal(win.focusCalled, 1)
 })
 
-test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', async () => {
+test('registerAiIpc retains only image and Creator operations after AI HTTP cutover', async () => {
   const ipcMain = createIpcMainStub()
   const dryRunCalls = []
   const hatchCalls = []
@@ -243,40 +243,18 @@ test('registerAiIpc wires AI config, behavior, and chat-adjacent handlers', asyn
     }
   })
 
-  const config = await ipcMain.handlers.get(IPC.AI_GET_CONFIG)()
-  const chat = await ipcMain.handlers.get(IPC.AI_CHAT)(null, { message: 'hi' })
-  const dryRun = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_DRY_RUN)(null, { reply: 'wave' })
-  const behaviorConfig = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_GET)()
-  const savedBehavior = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_SAVE)(null, { enabled: false })
-  const replay = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_REPLAY_DECISION)(null, { decisionId: 7 })
-  const cleared = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_CLEAR_DECISIONS)()
-  const exported = await ipcMain.handlers.get(IPC.AI_BEHAVIOR_EXPORT_DIAGNOSTICS)()
-
-  assert.deepEqual(config, { kind: 'ai-config', config: { enabled: true, model: 'gpt-5.5' } })
-  assert.deepEqual(chat, { payload: { message: 'hi' }, options: { source: 'control-center' } })
-  assert.deepEqual(dryRun, { kind: 'behavior-result', result: { matched: false } })
-  assert.deepEqual(behaviorConfig, { kind: 'behavior-config', config: { enabled: true, decisions: [{ id: 'd1' }] } })
-  assert.deepEqual(savedBehavior, { kind: 'behavior-config', config: { enabled: false } })
-  assert.deepEqual(replay, { kind: 'behavior-result', result: { decisionId: 7, actions: [{ id: 'wave' }] } })
-  assert.deepEqual(cleared, { kind: 'behavior-decisions', decisions: { ok: true } })
-  assert.deepEqual(exported, { ok: true })
-  assert.deepEqual(behaviorAdapterCalls, [
-    ['result', { matched: false }],
-    ['config', { enabled: true, decisions: [{ id: 'd1' }] }],
-    ['config', { enabled: false }],
-    ['result', { decisionId: 7, actions: [{ id: 'wave' }] }],
-    ['decisions', { ok: true }]
-  ])
-  assert.deepEqual(dryRunCalls, [{ reply: 'wave', actions: [{ id: 'wave' }] }])
-  assert.ok(ipcMain.handlers.has(IPC.AI_GET_PERSONA_PROFILE))
+  assert.equal(ipcMain.handlers.size, 8)
+  for (const channel of ipcMain.handlers.keys()) assert.doesNotMatch(channel, /^ai[:\-]/)
+  assert.deepEqual(await ipcMain.handlers.get(IPC.IMAGE_GENERATION_GET_CONFIG)(), { kind: 'image-config', config: { provider: 'cloud' } })
+  assert.deepEqual(await ipcMain.handlers.get(IPC.IMAGE_GENERATION_CHECK_HEALTH)(null, {}), { kind: 'image-health', result: { ok: true } })
+  assert.deepEqual(behaviorAdapterCalls, [])
+  assert.deepEqual(dryRunCalls, [])
   assert.ok(ipcMain.handlers.has(IPC.IMAGE_GENERATION_CHECK_HEALTH))
-  assert.deepEqual(await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_GET_CONFIG)(), { enabled: false })
-  await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_SAVE_CONFIG)(null, { enabled: true })
-  await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_SAVE_API_KEY)(null, 'host-only')
-  await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_CLEAR_API_KEY)()
+  assert.equal(ipcMain.handlers.has('hatch-pet-agent:save-config'), false)
+  assert.equal(ipcMain.handlers.has('hatch-pet-agent:save-api-key'), false)
   assert.deepEqual(await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_CHECK_CAPABILITY)(), { ok: true })
   assert.deepEqual(await ipcMain.handlers.get(IPC.HATCH_PET_AGENT_GET_RUN_STATUS)(null, { runId: 'run-1' }), { ok: true, runId: 'run-1' })
-  assert.deepEqual(hatchCalls, [['save', { enabled: true }], ['key', 'host-only'], ['clear'], ['status', 'run-1']])
+  assert.deepEqual(hatchCalls, [['status', 'run-1']])
 })
 
 test('registerPluginIpc wires plugin lifecycle and package inspection handlers', async () => {

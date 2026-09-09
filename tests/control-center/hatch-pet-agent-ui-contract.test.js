@@ -5,12 +5,16 @@ const path = require('node:path')
 
 const read = (relative) => fs.readFileSync(path.resolve(__dirname, '../../', relative), 'utf8')
 
-test('control center preload exposes exactly six hatch-pet methods through IPC', () => {
+test('control center preload retains two Creator methods and retires hatch configuration IPC', () => {
   const source = read('control-center-preload.js')
-  for (const method of ['getHatchPetAgentConfig', 'saveHatchPetAgentConfig', 'saveHatchPetAgentApiKey', 'clearHatchPetAgentApiKey', 'checkHatchPetAgentCapability', 'getHatchPetAgentRunStatus']) {
+  for (const method of ['checkHatchPetAgentCapability', 'getHatchPetAgentRunStatus']) {
     assert.match(source, new RegExp(`${method}:`))
   }
-  assert.equal((source.match(/HATCH_PET_AGENT_[A-Z_]+:/g) || []).length, 6)
+  for (const method of ['getHatchPetAgentConfig', 'saveHatchPetAgentConfig', 'saveHatchPetAgentApiKey', 'clearHatchPetAgentApiKey']) {
+    assert.doesNotMatch(source, new RegExp(`${method}:`))
+    assert.match(read('src/control-center/src/features/ai/api.ts'), new RegExp(`${method}:`))
+  }
+  assert.equal((source.match(/HATCH_PET_AGENT_[A-Z_]+:/g) || []).length, 2)
 })
 
 test('AiPane presents quality-first Hatch-pet readiness, budgets, identity checkpoint, and secret reference without secret values', () => {

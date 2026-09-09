@@ -21,7 +21,7 @@ function containsCredential(value) {
 	return Object.entries(value).some(([key, entry]) => /api.?key|password|secret|token|credential/i.test(key) || containsCredential(entry))
 }
 
-export function registerAiSecretRoutes(router, { secrets } = {}) {
+export function registerAiSecretRoutes(router, { secrets, onChanged } = {}) {
 	if (!router || typeof router.put !== "function" || typeof router.delete !== "function") {
 		throw new TypeError("registerAiSecretRoutes requires router")
 	}
@@ -30,10 +30,14 @@ export function registerAiSecretRoutes(router, { secrets } = {}) {
 	}
 
 	router.put("/ai/providers/:id/key", async (ctx) => {
-		return sendSuccess(ctx, await secrets.set(ctx.params.id, apiKey(ctx.body)))
+		const result = await secrets.set(ctx.params.id, apiKey(ctx.body))
+		onChanged?.()
+		return sendSuccess(ctx, result)
 	})
 	router.delete("/ai/providers/:id/key", async (ctx) => {
-		return sendSuccess(ctx, await secrets.clear(ctx.params.id))
+		const result = await secrets.clear(ctx.params.id)
+		onChanged?.()
+		return sendSuccess(ctx, result)
 	})
 }
 

@@ -44,10 +44,12 @@ export function createEventHub({
 			if (accepted !== false) return true
 			client.paused = true
 			if (typeof client.sink.once === "function") {
-				client.sink.once("drain", () => {
+				client.onDrain = () => {
+					client.onDrain = null
 					client.paused = false
 					flush(client)
-				})
+				}
+				client.sink.once("drain", client.onDrain)
 			}
 			return false
 		} catch (error) {
@@ -118,12 +120,17 @@ export function createEventHub({
 			queue: [],
 			dropped: new Map(),
 			paused: false,
+			onDrain: null,
 			closed: false,
 			lastFrameAt: now(),
 			heartbeat: null,
 		}
 		client.heartbeat = schedule(() => {
 			if (client.closed) return
+			if (client.paused) {
+				if (now() - client.lastFrameAt >= CLIENT_STALE_MS) close(client, true)
+				return
+			}
 			write(client, ": ping\n\n")
 			reportDrops(client)
 		}, heartbeatMs)
@@ -135,13 +142,18 @@ export function createEventHub({
 		}
 	}
 
-	function close(client) {
+	function close(client, stalled = false) {
 		if (!client || client.closed) return
 		client.closed = true
 		cancel(client.heartbeat)
 		clients.delete(client)
+		if (client.onDrain) client.sink.off?.("drain", client.onDrain)
+		client.onDrain = null
+		client.queue.length = 0
+		client.dropped.clear()
 		try {
-			client.sink.end?.()
+			if (stalled && typeof client.sink.destroy === "function") client.sink.destroy()
+			else client.sink.end?.()
 		} catch {
 			// 客户端已经断开。
 		}

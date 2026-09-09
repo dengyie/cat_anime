@@ -209,6 +209,105 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     petChatWindowService?.applyStreamState?.(state)
   }
 
+  const presentAiChatResult = async (result, { source = 'control-center', sourceSurface = source, requestId = result.requestId || '', requestedConversationId = '', startedAt = Date.now() } = {}) => {
+    if (result.canceled || (result.petPackId && result.petPackId !== petChatFacade.getActivePetPackId())) return petChatFacade.attachState(result)
+    const bubbleText = createPetBubbleText(result.reply, result.behaviorIntent, result.bubbleSegments)
+    const bubble = bubbleText
+      ? petChatFacade.captureBubble({ text: bubbleText, source: 'ai' }, { notify: false })
+      : petChatFacade.getLastBubble()
+    if (bubbleText) {
+      recordAppLog({
+        scope: 'ai-chat',
+        level: 'info',
+        actor: 'system',
+        event: 'ai-chat.bubble.dispatching',
+        message: 'AI chat bubble dispatching to pet service',
+        details: {
+          source,
+          sourceSurface,
+          requestId,
+          textChars: bubbleText.length
+        }
+      })
+      const sayResult = petService.say({
+        text: bubbleText,
+        source: 'ai',
+        sourceSurface,
+        requestId
+      })
+      recordAppLog({
+        scope: 'ai-chat',
+        level: 'info',
+        actor: 'system',
+        event: 'ai-chat.bubble.dispatched',
+        message: 'AI chat bubble dispatched to pet service',
+        details: {
+          source,
+          sourceSurface,
+          requestId,
+          textChars: String(sayResult?.text || '').length,
+          hasTtl: Number.isFinite(Number(sayResult?.ttlMs))
+        }
+      })
+    }
+    if (behaviorOrchestratorService?.getConfig?.().enabled) {
+      const decision = await behaviorOrchestratorService.evaluate({
+        reply: result.reply,
+        behaviorIntent: result.behaviorIntent,
+        actions: petService.getAnimations()?.actions || []
+      })
+      const behavior = executeBehaviorDecision(petService, decision)
+      const response = behavior?.matched && behavior.type === 'playAction'
+        ? { ...result, behavior, action: behavior }
+        : { ...result, behavior }
+      recordAppLog({
+        scope: 'ai-chat',
+        level: 'info',
+        actor: 'system',
+        event: 'ai-chat.ipc.completed',
+        message: 'AI chat IPC request completed',
+        details: {
+          source,
+          sourceSurface,
+          requestId,
+          requestedConversationId,
+          conversationId: result.conversationId || '',
+          elapsedMs: Date.now() - startedAt,
+          replyChars: String(result.reply || '').length,
+          bubbleChars: bubbleText.length,
+          bubbleSegmentCount: Array.isArray(result.bubbleSegments) ? result.bubbleSegments.length : 0,
+          messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
+          behaviorMatched: Boolean(behavior?.matched),
+          actionId: behavior?.actionId || ''
+        }
+      })
+      return petChatFacade.attachState(response, bubble)
+    }
+    const action = triggerAiSemanticAction(petService, result.reply)
+    const response = action ? { ...result, action } : result
+    recordAppLog({
+      scope: 'ai-chat',
+      level: 'info',
+      actor: 'system',
+      event: 'ai-chat.ipc.completed',
+      message: 'AI chat IPC request completed',
+      details: {
+        source,
+        sourceSurface,
+        requestId,
+        requestedConversationId,
+        conversationId: result.conversationId || '',
+        elapsedMs: Date.now() - startedAt,
+        replyChars: String(result.reply || '').length,
+        bubbleChars: bubbleText.length,
+        bubbleSegmentCount: Array.isArray(result.bubbleSegments) ? result.bubbleSegments.length : 0,
+        messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
+        actionId: action?.actionId || ''
+      }
+    })
+    return petChatFacade.attachState(response, bubble)
+  }
+
   const runAiChatRequest = async (payload, { source = 'control-center', entrypoint } = {}) => {
     const requestPayload = entrypoint && !payload?.entrypoint
       ? { ...payload, entrypoint }
@@ -239,104 +338,11 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
       const result = typeof aiTalkService?.streamChat === 'function'
         ? await aiTalkService.streamChat({
             ...requestPayload,
+            requestId,
             onState: broadcastAiTalkStreamState
           })
         : await (aiTalkService || aiService).chat(requestPayload)
-      const bubbleText = createPetBubbleText(result.reply, result.behaviorIntent, result.bubbleSegments)
-      const bubble = bubbleText
-        ? petChatFacade.captureBubble({ text: bubbleText, source: 'ai' }, { notify: false })
-        : petChatFacade.getLastBubble()
-      if (bubbleText) {
-        recordAppLog({
-          scope: 'ai-chat',
-          level: 'info',
-          actor: 'system',
-          event: 'ai-chat.bubble.dispatching',
-          message: 'AI chat bubble dispatching to pet service',
-          details: {
-            source,
-            sourceSurface,
-            requestId,
-            textChars: bubbleText.length
-          }
-        })
-        const sayResult = petService.say({
-          text: bubbleText,
-          source: 'ai',
-          sourceSurface,
-          requestId
-        })
-        recordAppLog({
-          scope: 'ai-chat',
-          level: 'info',
-          actor: 'system',
-          event: 'ai-chat.bubble.dispatched',
-          message: 'AI chat bubble dispatched to pet service',
-          details: {
-            source,
-            sourceSurface,
-            requestId,
-            textChars: String(sayResult?.text || '').length,
-            hasTtl: Number.isFinite(Number(sayResult?.ttlMs))
-          }
-        })
-      }
-      if (behaviorOrchestratorService?.getConfig?.().enabled) {
-        const decision = behaviorOrchestratorService.evaluate({
-          reply: result.reply,
-          behaviorIntent: result.behaviorIntent,
-          actions: petService.getAnimations()?.actions || []
-        })
-        const behavior = executeBehaviorDecision(petService, decision)
-        const response = behavior?.matched && behavior.type === 'playAction'
-          ? { ...result, behavior, action: behavior }
-          : { ...result, behavior }
-        recordAppLog({
-          scope: 'ai-chat',
-          level: 'info',
-          actor: 'system',
-          event: 'ai-chat.ipc.completed',
-          message: 'AI chat IPC request completed',
-          details: {
-            source,
-            sourceSurface,
-            requestId,
-            requestedConversationId,
-            conversationId: result.conversationId || '',
-            elapsedMs: Date.now() - startedAt,
-            replyChars: String(result.reply || '').length,
-            bubbleChars: bubbleText.length,
-            bubbleSegmentCount: Array.isArray(result.bubbleSegments) ? result.bubbleSegments.length : 0,
-            messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
-            behaviorMatched: Boolean(behavior?.matched),
-            actionId: behavior?.actionId || ''
-          }
-        })
-        return petChatFacade.attachState(response, bubble)
-      }
-      const action = triggerAiSemanticAction(petService, result.reply)
-      const response = action ? { ...result, action } : result
-      recordAppLog({
-        scope: 'ai-chat',
-        level: 'info',
-        actor: 'system',
-        event: 'ai-chat.ipc.completed',
-        message: 'AI chat IPC request completed',
-        details: {
-          source,
-          sourceSurface,
-          requestId,
-          requestedConversationId,
-          conversationId: result.conversationId || '',
-          elapsedMs: Date.now() - startedAt,
-          replyChars: String(result.reply || '').length,
-          bubbleChars: bubbleText.length,
-          bubbleSegmentCount: Array.isArray(result.bubbleSegments) ? result.bubbleSegments.length : 0,
-          messageCount: Array.isArray(result.messages) ? result.messages.length : 0,
-          actionId: action?.actionId || ''
-        }
-      })
-      return petChatFacade.attachState(response, bubble)
+      return presentAiChatResult(result, { source, sourceSurface, requestId, requestedConversationId, startedAt })
     } catch (error) {
       recordAppLog({
         scope: 'ai-chat',
@@ -443,9 +449,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     return petChatFacade.dragBubbleChatWindowTo(payload)
   })
 
-  ipcMainService.handle(IPC.PET_BUBBLE_CHAT_CANCEL_MESSAGE, (_event, payload = {}) => {
+  ipcMainService.handle(IPC.PET_BUBBLE_CHAT_CANCEL_MESSAGE, async (_event, payload = {}) => {
     const requestId = typeof payload?.requestId === 'string' ? payload.requestId.trim().slice(0, 120) : ''
-    const result = aiTalkService?.cancelRequest?.({ requestId, reason: 'user-cancel', sourceSurface: 'bubble-chat' })
+    const result = await aiTalkService?.cancelRequest?.({ requestId, reason: 'user-cancel', sourceSurface: 'bubble-chat' })
     return Boolean(result?.canceled)
   })
 
@@ -602,9 +608,9 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
     petChatWindowService?.openSettings?.()
   })
 
-  ipcMainService.handle(IPC.PET_CHAT_CANCEL_MESSAGE, (_event, payload = {}) => {
+  ipcMainService.handle(IPC.PET_CHAT_CANCEL_MESSAGE, async (_event, payload = {}) => {
     const requestId = typeof payload?.requestId === 'string' ? payload.requestId.trim().slice(0, 120) : ''
-    const result = aiTalkService?.cancelRequest?.({ requestId, reason: 'user-cancel', sourceSurface: 'pet-chat' })
+    const result = await aiTalkService?.cancelRequest?.({ requestId, reason: 'user-cancel', sourceSurface: 'pet-chat' })
     return Boolean(result?.canceled)
   })
 
@@ -851,6 +857,8 @@ const registerIpcHandlers = ({ getPetWindow, petService, petPackService, aiServi
 
   return {
     broadcastActivePetPackChanged: petChatFacade.broadcastActivePetPackChanged,
+    presentAiChatResult,
+    refreshAiState: () => petChatFacade.refreshPetPackScopedChatState({ reason: 'ai-backend-state' }),
     handlePetPackRequest,
     handleActionsRequest: actionsSidecarBridge.handle
   }

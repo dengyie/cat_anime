@@ -5,8 +5,8 @@ import {
   apiSuccessSchema,
   type ApiError as ContractApiError,
   type ErrorCode,
-} from '@openpet/contracts'
-import type { z } from 'zod'
+} from '../../../shared/browser-contracts.ts'
+import * as v from 'valibot'
 
 import type { RequestInput, Transport } from './transport.ts'
 
@@ -17,8 +17,8 @@ export const MAX_RETRIES = 2
 const RETRY_DELAYS_MS = [250, 500] as const
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
-type ContractSchema = z.ZodTypeAny
-type SchemaValue<TSchema extends ContractSchema> = z.infer<TSchema>
+type ContractSchema = v.GenericSchema
+type SchemaValue<TSchema extends ContractSchema> = v.InferOutput<TSchema>
 
 type RequestBase<TResponseSchema extends ContractSchema> = {
   path: string
@@ -130,21 +130,21 @@ function unpack<TSchema extends ContractSchema>(
   responseSchema: TSchema,
   requestId: string,
 ): SchemaValue<TSchema> {
-  const failure = apiFailureSchema.safeParse(payload)
-  if (failure.success) throw new ApiError(failure.data.error, { dispatched: true })
+  const failure = v.safeParse(apiFailureSchema, payload)
+  if (failure.success) throw new ApiError(failure.output.error, { dispatched: true })
 
-  const success = apiSuccessSchema(responseSchema).safeParse(payload)
+  const success = v.safeParse(apiSuccessSchema(responseSchema), payload)
   if (success.success) {
-    return (success.data as { data: SchemaValue<TSchema> }).data
+    return (success.output as { data: SchemaValue<TSchema> }).data
   }
 
   throw new ApiError({
     code: 'INTERNAL',
     message: 'Backend response does not match the API contract',
-    details: { issues: success.error.issues },
+    details: { issues: success.issues?.map(({ message, type }) => ({ message, type })) },
     retryable: false,
     requestId,
-  }, { cause: success.error, dispatched: true })
+  }, { dispatched: true })
 }
 
 function delay(ms: number, signal: AbortSignal) {
@@ -184,7 +184,7 @@ export function createApiClient(transport: Transport): ApiClient {
       }
 
       const body = input.requestSchema
-        ? JSON.stringify(input.requestSchema.parse(input.body))
+        ? JSON.stringify(v.parse(input.requestSchema, input.body))
         : undefined
       const timeoutMs = input.timeoutMs ?? (input.job ? JOB_TIMEOUT_MS : DEFAULT_TIMEOUT_MS)
       const timeoutSignal = AbortSignal.timeout(timeoutMs)

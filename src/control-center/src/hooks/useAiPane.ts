@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { controlCenterAPI as api } from '../api/control-center-api'
+import { aiHttpApi } from '../features/ai/api.ts'
 import { nextPetPackActivationEventId } from '../features/pet-packs/api.ts'
 import { useSse } from './useSse.ts'
 import {
@@ -366,7 +367,7 @@ export function useAiPane(activeTab = 'ai') {
   const appliedSaveRevisionRef = useRef({ provider: 0, image: 0, behavior: 0 })
 
   const loadPersonaProfile = async () => {
-    const profile = cloneAiPersonaProfile(await api.getAiPersonaProfile())
+    const profile = cloneAiPersonaProfile(await aiHttpApi.getAiPersonaProfile())
     setPersonaProfile(profile)
     setPersonaDraft(personaToDraft(profile.overridePersona))
     setGeneratedPersonaDraft((current) => (current?.petPackId === profile.petPackId ? current : null))
@@ -374,7 +375,7 @@ export function useAiPane(activeTab = 'ai') {
   }
 
   const loadMemoryProfile = async () => {
-    const profile = cloneAiMemoryProfile(await api.getAiMemoryProfile())
+    const profile = cloneAiMemoryProfile(await aiHttpApi.getAiMemoryProfile())
     setMemoryProfile(profile)
     return profile
   }
@@ -389,7 +390,7 @@ export function useAiPane(activeTab = 'ai') {
   const loadPetChatState = async () => applyPetChatState(await api.getPetChatState())
 
   const loadAiConfig = async ({ preserveDraft = false } = {}) => {
-    const nextConfig = cloneAiConfig(await api.getAiConfig())
+    const nextConfig = cloneAiConfig(await aiHttpApi.getAiConfig())
     setConfig((current) => applySavedAiConfigState({
       draftConfig: current,
       savedConfig: nextConfig,
@@ -400,7 +401,7 @@ export function useAiPane(activeTab = 'ai') {
   }
 
   const loadHatchPetAgentConfig = async ({ preserveDraft = false } = {}) => {
-    const nextConfig = cloneHatchPetAgentConfig(await api.getHatchPetAgentConfig())
+    const nextConfig = cloneHatchPetAgentConfig(await aiHttpApi.getHatchPetAgentConfig())
     setHatchPetAgentConfig((current) => preserveDraft ? current : nextConfig)
     setActiveHatchPetAgentConfig(nextConfig)
     return nextConfig
@@ -419,7 +420,7 @@ export function useAiPane(activeTab = 'ai') {
 
   const loadAiTalkTraceSummary = async (conversationId?: string) => {
     try {
-      const summary = cloneAiTalkTraceSummary(await api.getAiTalkTraceSummary(
+      const summary = cloneAiTalkTraceSummary(await aiHttpApi.getAiTalkTraceSummary(
         conversationId ? { conversationId } : undefined
       ))
       setTraceSummary(summary)
@@ -440,7 +441,7 @@ export function useAiPane(activeTab = 'ai') {
   }
 
   const loadBehavior = async () => {
-    const nextBehavior = cloneAiBehavior(await api.getAiBehavior())
+    const nextBehavior = cloneAiBehavior(await aiHttpApi.getAiBehavior())
     setBehavior(nextBehavior)
     setBehaviorRulesText(JSON.stringify(nextBehavior.rules || [], null, 2))
     setConfig((current) => ({ ...current, behavior: nextBehavior }))
@@ -449,10 +450,10 @@ export function useAiPane(activeTab = 'ai') {
 
   const refreshActivePetPackAiContext = async (reason = 'refresh') => {
     const [profile, memory, state, nextBehavior] = await Promise.all([
-      api.getAiPersonaProfile(),
-      api.getAiMemoryProfile(),
+      aiHttpApi.getAiPersonaProfile(),
+      aiHttpApi.getAiMemoryProfile(),
       api.getPetChatState(),
-      api.getAiBehavior()
+      aiHttpApi.getAiBehavior()
     ])
     const nextPersonaProfile = cloneAiPersonaProfile(profile)
     setPersonaProfile(nextPersonaProfile)
@@ -491,13 +492,13 @@ export function useAiPane(activeTab = 'ai') {
   useEffect(() => {
     let mounted = true
     Promise.all([
-      api.getAiConfig(),
-      api.getAiPersonaProfile(),
-      api.getAiMemoryProfile(),
+      aiHttpApi.getAiConfig(),
+      aiHttpApi.getAiPersonaProfile(),
+      aiHttpApi.getAiMemoryProfile(),
       api.getImageGenerationConfig(),
-      api.getHatchPetAgentConfig(),
+      aiHttpApi.getHatchPetAgentConfig(),
       api.getPetChatState(),
-      api.getAiBehavior()
+      aiHttpApi.getAiBehavior()
     ]).then(([loadedConfig, loadedPersonaProfile, loadedMemoryProfile, loadedImageGenerationConfig, loadedHatchPetAgentConfig, loadedPetChatState, loadedBehavior]) => {
       if (!mounted) return
       const nextConfig = cloneAiConfig(loadedConfig)
@@ -570,7 +571,7 @@ export function useAiPane(activeTab = 'ai') {
     const validationError = validateProviderConfig(submittedConfig)
     if (validationError) throw new Error(validationError)
     const changedFields = getProviderConfigChanges(submittedConfig, submittedActiveConfig)
-    const savedConfig = cloneAiConfig(await api.saveAiConfig(buildProviderConfigSavePayload(submittedConfig, submittedActiveConfig)))
+    const savedConfig = cloneAiConfig(await aiHttpApi.saveAiConfig(buildProviderConfigSavePayload(submittedConfig, submittedActiveConfig)))
     if (!shouldApplySaveResponse(revision, appliedSaveRevisionRef.current.provider)) {
       return { savedConfig, changedFields, applied: false }
     }
@@ -591,7 +592,7 @@ export function useAiPane(activeTab = 'ai') {
       if (apiKeyDraft) throw new Error('API Key 不能为空')
       return null
     }
-    const result = await api.saveAiApiKey(key)
+    const result = await aiHttpApi.saveAiApiKey(key)
     setConfig((current) => ({ ...current, apiKeyRef: result.apiKeyRef, hasApiKey: result.hasApiKey }))
     setActiveConfig((current) => ({ ...current, apiKeyRef: result.apiKeyRef, hasApiKey: result.hasApiKey }))
     setApiKeyDraft('')
@@ -639,7 +640,7 @@ export function useAiPane(activeTab = 'ai') {
           throw new Error('Hatch Pet Agent Base URL 必须使用 HTTP 或 HTTPS')
         }
       }
-      const saved = cloneHatchPetAgentConfig(await api.saveHatchPetAgentConfig(
+      const saved = cloneHatchPetAgentConfig(await aiHttpApi.saveHatchPetAgentConfig(
         buildHatchPetAgentConfigSaveRequest(hatchPetAgentConfig)
       ))
       setHatchPetAgentConfig(saved)
@@ -662,7 +663,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setHatchPetAgentStatus('保存 Hatch Pet Agent API Key 中')
     try {
-      const result = await api.saveHatchPetAgentApiKey(apiKey)
+      const result = await aiHttpApi.saveHatchPetAgentApiKey(apiKey)
       setHatchPetAgentApiKeyDraft('')
       await loadHatchPetAgentConfig({ preserveDraft: true })
       setHatchPetAgentConfig((current) => current.configMode === 'override'
@@ -681,7 +682,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setHatchPetAgentStatus('清除 Hatch Pet Agent API Key 中')
     try {
-      const result = await api.clearHatchPetAgentApiKey()
+      const result = await aiHttpApi.clearHatchPetAgentApiKey()
       setHatchPetAgentApiKeyDraft('')
       await loadHatchPetAgentConfig({ preserveDraft: true })
       setHatchPetAgentConfig((current) => current.configMode === 'override'
@@ -757,7 +758,7 @@ export function useAiPane(activeTab = 'ai') {
       const parsedRules = parseBehaviorRules(submittedRulesText)
       const submittedBehavior = cloneAiBehavior({ ...behavior, rules: parsedRules })
       const revision = ++saveRevisionRef.current.behavior
-      const savedBehavior = cloneAiBehavior(await api.saveAiBehavior(submittedBehavior))
+      const savedBehavior = cloneAiBehavior(await aiHttpApi.saveAiBehavior(submittedBehavior))
       if (!shouldApplySaveResponse(revision, appliedSaveRevisionRef.current.behavior)) return
       appliedSaveRevisionRef.current.behavior = revision
       setBehavior((current) => cloneAiBehavior(mergeSavedFields({ current, submitted: submittedBehavior, saved: savedBehavior })))
@@ -784,7 +785,7 @@ export function useAiPane(activeTab = 'ai') {
     setBehaviorStatus('')
     try {
       const parsedRules = parseBehaviorRules(behaviorRulesText)
-      const result = await api.dryRunAiBehavior({ reply, behavior: { ...behavior, rules: parsedRules } })
+      const result = await aiHttpApi.dryRunAiBehavior({ reply, behavior: { ...behavior, rules: parsedRules } })
       setDryRunResult(result)
       setBehaviorStatus(result.matched ? `Dry run 命中：${result.reason}` : `Dry run 未命中：${result.reason}`)
     } catch (error) {
@@ -801,7 +802,7 @@ export function useAiPane(activeTab = 'ai') {
     }
     setBehaviorStatus('')
     try {
-      const result = await api.replayAiBehaviorDecision(decisionId)
+      const result = await aiHttpApi.replayAiBehaviorDecision(decisionId)
       setReplayResult(result)
       setBehaviorStatus(result.matched ? `Replay 命中：${result.reason}` : `Replay 未命中：${result.reason}`)
     } catch (error) {
@@ -813,7 +814,7 @@ export function useAiPane(activeTab = 'ai') {
   const onExportBehaviorDiagnostics = async () => {
     setBehaviorStatus('')
     try {
-      const content = await api.exportAiBehaviorDiagnostics()
+      const content = await aiHttpApi.exportAiBehaviorDiagnostics()
       downloadTextFile('openpet-ai-behavior-diagnostics.json', content, 'application/json;charset=utf-8')
       setBehaviorStatus('Behavior 诊断已导出')
     } catch (error) {
@@ -825,7 +826,7 @@ export function useAiPane(activeTab = 'ai') {
     if (!window.confirm('清空 AI 行为决策记录？')) return
     setBehaviorStatus('')
     try {
-      await api.clearAiBehaviorDecisions()
+      await aiHttpApi.clearAiBehaviorDecisions()
       await loadBehavior()
       setReplayResult(null)
       setDryRunResult(null)
@@ -892,7 +893,7 @@ export function useAiPane(activeTab = 'ai') {
     try {
       const key = visionApiKeyDraft.trim()
       if (!key) throw new Error('Vision API Key 不能为空')
-      const result = await api.saveAiVisionApiKey(key)
+      const result = await aiHttpApi.saveAiVisionApiKey(key)
       const applyResult = (current: AiConfigViewState) => cloneAiConfig({
         ...current,
         vision: {
@@ -919,7 +920,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setVisionStatus('清除 Vision API Key 中')
     try {
-      const result = await api.clearAiVisionApiKey()
+      const result = await aiHttpApi.clearAiVisionApiKey()
       const applyResult = (current: AiConfigViewState) => cloneAiConfig({
         ...current,
         vision: {
@@ -1009,7 +1010,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setChatModelDiscoveryStatus('聊天模型探测中')
     try {
-      const result = await api.discoverAiModels()
+      const result = await aiHttpApi.discoverAiModels()
       const nextActiveConfig = result.ok && result.code === 'ok'
         ? await loadAiConfig({ preserveDraft: true })
         : activeConfig
@@ -1035,7 +1036,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setVisionModelDiscoveryStatus('Vision 模型探测中')
     try {
-      const result = await api.discoverAiVisionModels()
+      const result = await aiHttpApi.discoverAiVisionModels()
       const nextActiveConfig = result.ok && result.code === 'ok'
         ? await loadAiConfig({ preserveDraft: true })
         : activeConfig
@@ -1076,7 +1077,7 @@ export function useAiPane(activeTab = 'ai') {
     setConnectionStatus('测试中')
     setConnectionTestResult(null)
     try {
-      const result = await api.testAiConnection()
+      const result = await aiHttpApi.testAiConnection()
       const nextActiveConfig = result.modelsProbe === 'ok'
         ? await loadAiConfig({ preserveDraft: true })
         : activeConfig
@@ -1105,7 +1106,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setStatus('')
     try {
-      const profile = cloneAiPersonaProfile(await api.saveAiPersonaOverride({}))
+      const profile = cloneAiPersonaProfile(await aiHttpApi.saveAiPersonaOverride({}))
       setPersonaProfile(profile)
       setPersonaDraft(personaToDraft(profile.overridePersona))
       setGeneratedPersonaDraft(null)
@@ -1121,7 +1122,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setStatus('')
     try {
-      const profile = cloneAiPersonaProfile(await api.saveAiPersonaOverride(buildPersonaOverrideFromDraft(personaDraft)))
+      const profile = cloneAiPersonaProfile(await aiHttpApi.saveAiPersonaOverride(buildPersonaOverrideFromDraft(personaDraft)))
       setPersonaProfile(profile)
       setPersonaDraft(personaToDraft(profile.overridePersona))
       setGeneratedPersonaDraft(null)
@@ -1137,7 +1138,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setStatus('')
     try {
-      const draft = await api.generateAiPersonaDraft({ instruction: personaGenerationInstruction })
+      const draft = await aiHttpApi.generateAiPersonaDraft({ instruction: personaGenerationInstruction })
       setGeneratedPersonaDraft(draft)
       setStatus('宠物人格草稿已生成，确认后才会写入本地 override')
     } catch (error) {
@@ -1158,7 +1159,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setStatus('')
     try {
-      const profile = cloneAiPersonaProfile(await api.saveAiPersonaOverride(generatedPersonaDraft.draftPersona))
+      const profile = cloneAiPersonaProfile(await aiHttpApi.saveAiPersonaOverride(generatedPersonaDraft.draftPersona))
       setPersonaProfile(profile)
       setPersonaDraft(personaToDraft(profile.overridePersona))
       setGeneratedPersonaDraft(null)
@@ -1185,7 +1186,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setStatus('删除长期记忆中')
     try {
-      const profile = cloneAiMemoryProfile(await api.deleteAiMemory(memoryId))
+      const profile = cloneAiMemoryProfile(await aiHttpApi.deleteAiMemory(memoryId))
       setMemoryProfile(profile)
       setStatus('长期记忆已删除')
     } catch (error) {
@@ -1200,7 +1201,7 @@ export function useAiPane(activeTab = 'ai') {
     setSaving(true)
     setStatus('清空当前宠物关系记忆中')
     try {
-      const profile = cloneAiMemoryProfile(await api.clearAiPetPackMemories())
+      const profile = cloneAiMemoryProfile(await aiHttpApi.clearAiPetPackMemories())
       setMemoryProfile(profile)
       setStatus('当前宠物关系记忆已清空')
     } catch (error) {
@@ -1224,7 +1225,7 @@ export function useAiPane(activeTab = 'ai') {
     setChatting(true)
     setChatStatus('')
     try {
-      const result = await api.sendPetChatMessage({ message, entrypoint: 'control-center' })
+      const result = await aiHttpApi.sendPetChatMessage({ message, entrypoint: 'control-center' })
       const fallbackMessages: ChatMessage[] = Array.isArray(result.messages)
         ? cloneChatMessages(result.messages)
         : [...nextMessages, { role: 'assistant', content: result.reply }]
@@ -1281,7 +1282,7 @@ export function useAiPane(activeTab = 'ai') {
   const onExportAiTalkTraceDiagnostics = async () => {
     setStatus('')
     try {
-      const content = await api.exportAiTalkTraceDiagnostics({
+      const content = await aiHttpApi.exportAiTalkTraceDiagnostics({
         petPackId: String(traceDiagnosticsFilters.petPackId || '').trim(),
         conversationId: String(traceDiagnosticsFilters.conversationId || '').trim()
       })

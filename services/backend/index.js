@@ -54,6 +54,10 @@ import { registerPluginRoutes } from "./routes/plugins.js"
 import { registerAiSecretRoutes } from "./routes/ai.js"
 import { registerAiRoutes } from "./routes/ai.js"
 import { createAiService } from "./domains/ai/image-generation.js"
+import { createAiDomain } from "./domains/ai/core.js"
+import { registerAiRuntimeRoutes } from "./routes/ai-runtime.js"
+import { createConversationsRepository } from "./store/repositories/conversations.js"
+import { upgradeAiJsonStore } from "./store/upgrade-ai-json.js"
 import { openDatabase } from "./store/db.js"
 import { migrate } from "./store/migrate.js"
 import { migrateFromJson, needsJsonImport } from "./store/migrate-from-json.js"
@@ -230,6 +234,7 @@ const eventHub = createEventHub({ logger })
 runtime.events = eventHub
 shell.on(EVENT_PET_PACK_ACTIVATED, (envelope) => {
 	eventHub.publish(EVENT_PET_PACK_ACTIVATED, envelope.body.payload)
+	void runtime.aiChat?.hydratePack().catch((error) => logger.warn("AI pack hydration failed", { error: String(error) }))
 })
 
 router.use(requestId())
@@ -304,7 +309,17 @@ if (legacyLocalHttpConfig.enabled) {
 	}
 }
 registerServiceRoutes(router, { manager: runtime.service })
-registerAiSecretRoutes(router, { secrets: runtime.secrets })
+registerAiSecretRoutes(router, { secrets: runtime.secrets, onChanged: () => runtime.aiChat?.publishSnapshot() })
+const aiHostRequest = async (operation, payload = {}) => {
+	const reply = await shell.request({ type: "ai.host.request", operation, payload })
+	if (!reply.body.ok) throw new Error(reply.body.error || "AI host request failed")
+	return reply.body.result
+}
+registerAiRuntimeRoutes(router, {
+	getDomain: () => runtime.aiChat,
+	present: (result, context) => aiHostRequest("present", { result, context }),
+	getActions: async () => (await aiHostRequest("context")).actions,
+})
 registerAiRoutes(router, { jobs: { insert: (input) => {
 		if (!runtime.enqueueJob) throw new Error("Job service unavailable")
 		return runtime.enqueueJob(input)
@@ -360,6 +375,7 @@ await initializeBackendRuntime({
 		openDatabase,
 		migrate,
 		migrateFromJson,
+		upgradeAiJsonStore,
 		needsJsonImport,
 		createJobsRepository,
 		createLogsRepository,
@@ -420,6 +436,14 @@ await initializeBackendRuntime({
 })
 
 if (!runtime.degraded && runtime.jobs) {
+	runtime.aiChat = createAiDomain({
+		settings: runtime.settings, secrets: runtime.secrets, mutationAuthority: settingsMutationAuthority,
+		repository: createConversationsRepository({ db: runtime.db }),
+		getActivePetPack: async () => (await aiHostRequest("context")).pack,
+		emit: (name, payload) => eventHub.publish(name, payload),
+		onSnapshot: (snapshot) => shell.send({ type: "ai.state", snapshot }),
+		fetchImpl: globalThis.fetch, logger,
+	})
 	runtime.ai = createAiService({ settings: runtime.settings, secrets: runtime.secrets, fetchImpl: globalThis.fetch, logger, userDataDir: runtime.userDataDir })
 	runtime.queue = createQueue({ repo: runtime.jobs, logger })
 	runtime.runner = createRunner({
@@ -573,6 +597,7 @@ async function shutdown(reason, code) {
 		logger.error("MCP HTTP server shutdown failed", { error: String(error) })
 	}
 	await runtime.runner?.shutdown?.()
+	await runtime.aiChat?.dispose?.()
 	runtime.queue?.stop?.()
 	await new Promise((resolve) => server.close(resolve))
 	if (runtime.db !== null) runtime.db.close()

@@ -54,4 +54,26 @@ describe("T11 event hub", async () => {
 		tick()
 		assert.equal(sink.writes.at(-1), ": ping\n\n")
 	})
+
+	it("pauses heartbeats under backpressure and releases stalled clients", () => {
+		const { EventEmitter } = require("node:events")
+		const sink = new EventEmitter()
+		let writes = 0
+		let destroyed = false
+		sink.write = () => { writes++; return false }
+		sink.destroy = () => { destroyed = true }
+		let tick
+		let now = 0
+		const hub = createEventHub({ now: () => now, setInterval: (fn) => { tick = fn; return 1 }, clearInterval() {} })
+		hub.subscribe({ topics: ["jobs"], sink })
+		hub.publish("job.created", { jobId: "blocked" })
+		for (let index = 0; index < 20; index++) tick()
+		assert.equal(writes, 1)
+		assert.equal(sink.listenerCount("drain"), 1)
+		now = 45_001
+		tick()
+		assert.equal(hub.stats().clients, 0)
+		assert.equal(sink.listenerCount("drain"), 0)
+		assert.equal(destroyed, true)
+	})
 })

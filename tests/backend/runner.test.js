@@ -225,3 +225,49 @@ describe("Job runner · shutdown", () => {
 		assert.equal(constants.SHUTDOWN_GRACE_MS, 5_000)
 	})
 })
+
+describe('Job runner · ownership and late completion', () => {
+  it('does not execute the same running Job twice', async () => {
+    const gate = deferred()
+    let executions = 0
+    await withRunner({ 'image.generate': async () => { executions++; await gate.promise; return 'done' } }, async ({ queue, repo, runner }) => {
+      enqueue(queue, 'single-owner', 'image.generate')
+      const first = runner.run()
+      const second = Promise.resolve().then(() => runner.run(repo.byId('single-owner')))
+      const settled = Promise.allSettled([first, second])
+      gate.resolve()
+      await settled
+      assert.equal(executions, 1)
+      assert.equal(repo.byId('single-owner').status, 'succeeded')
+    })
+  })
+
+  it('a canceled provider cannot enter finalizing and write a late artifact', async () => {
+    const gate = deferred()
+    let writes = 0
+    await withRunner({ 'image.generate': async ({ finalize, report }) => {
+      await gate.promise
+      report({ phase: 'rendering', percent: 90 })
+      return finalize(() => { writes++; return 'late artifact' })
+    } }, async ({ queue, repo, runner }) => {
+      enqueue(queue, 'late-result', 'image.generate')
+      const running = runner.run()
+      await runner.cancel('late-result')
+      gate.resolve()
+      await running
+      assert.equal(writes, 0)
+      assert.equal(repo.byId('late-result').status, 'canceled')
+      assert.equal(repo.byId('late-result').progress, null)
+    })
+  })
+
+  it('missing handler failure dispatches the next waiting Job', async () => {
+    await withRunner({ 'image.generate': async () => 'done' }, async ({ queue, repo, runner }) => {
+      enqueue(queue, 'missing', 'image.validate')
+      enqueue(queue, 'next-valid', 'image.generate')
+      await assert.rejects(runner.run(), /handler/)
+      await eventually(() => repo.byId('next-valid').status === 'succeeded')
+      assert.equal(queue.stats().running, 0)
+    })
+  })
+})

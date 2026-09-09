@@ -17,7 +17,9 @@
     "start": "node scripts/cleanup-dev-instances.js && npm run build:system-cursor && npm run build:control-center && electron .",
     "dev:control-center": "vite --config src/control-center/vite.config.js --host 127.0.0.1",
     "build:system-cursor": "node scripts/build-macos-system-cursor-helper.js",
-    "build:control-center": "vite build --config src/control-center/vite.config.js",
+    "build:control-center": "npm run build:browser-contracts && vite build --config src/control-center/vite.config.js",
+    "build:browser-contracts": "node scripts/build-browser-contracts.mjs",
+    "check:browser-contracts": "node scripts/build-browser-contracts.mjs --check",
     "build:contracts": "npm --workspace @openpet/contracts run build",
     "pack": "npm run build:contracts && npm run build:system-cursor && npm run build:control-center && electron-builder --dir",
     "dist": "npm run build:contracts && npm run build:system-cursor && npm run build:control-center && electron-builder",
@@ -102,6 +104,7 @@
     "test:resilience": "node --test tests/integration/resilience.test.js",
     "test:degraded": "node --test tests/backend/degraded.test.js",
     "check:preload-size": "node scripts/check-preload-size.mjs",
+    "check:packaged-sidecar": "node scripts/check-packaged-sidecar.cjs",
     "test:tools": "node --test \"tests/scripts/*.test.js\" \"tests/release/*.test.js\" \"tests/docs/*.test.js\"",
     "test:control-center": "node scripts/run-control-center-playwright.js"
   },
@@ -133,9 +136,13 @@
     "asarUnpack": [
       "build/native/**/*",
       "services/backend/**",
+      "src/main/**",
+      "src/shared/**",
+      "package.json",
       "packages/contracts/**",
       "node_modules/@openpet/contracts/**",
-      "node_modules/zod/**"
+      "node_modules/zod/**",
+      "node_modules/**"
     ],
     "afterSign": "build/notarize.js",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
@@ -193,8 +200,10 @@
   "dependencies": {
     "@openpet/contracts": "0.0.0",
     "@tanstack/react-query": "^5.101.4",
+    "eventsource-parser": "^3.1.1",
     "grammy": "^1.44.0",
     "sharp": "^0.35.3",
+    "valibot": "^1.4.2",
     "yauzl": "^3.4.0",
     "yazl": "^3.3.1",
     "zod": "^4.0.0"

@@ -10,6 +10,8 @@ import {
 import { dirname, join } from "node:path"
 
 import { migrate } from "./migrate.js"
+import { createConversationsRepository } from "./repositories/conversations.js"
+import { canonicalAiState, countAiState } from "./upgrade-ai-json.js"
 
 export const BACKUP_DIR_PREFIX = "backup-"
 export const DUAL_WRITE_KINDS = Object.freeze(["conversations", "settings"])
@@ -87,13 +89,17 @@ function isoOrMillis(value, fallback) {
 	return Number.isFinite(parsed) ? parsed : fallback
 }
 
-function normalizeConversationId(key, conversation, used) {
-	const requested = typeof conversation?.id === "string" && conversation.id.trim() ? conversation.id.trim() : key
-	let id = requested
-	let suffix = 1
-	while (used.has(id)) id = `${requested}:${suffix++}`
-	used.add(id)
-	return id
+function normalizeId(value, fallback) {
+	const normalized = typeof value === "string" ? value.trim() : ""
+	return normalized || fallback
+}
+
+function conversationIdentity(key, conversation) {
+	const publicId = normalizeId(conversation?.id, String(key || "main").split(":").at(-1) || "main")
+	const entrypoint = normalizeId(conversation?.entrypoint, String(key || "").split(":")[0] || "control-center")
+	const petPackId = normalizeId(conversation?.petPackId ?? conversation?.personaPackId, "legacy-cat")
+	const sessionId = normalizeId(conversation?.sessionId, `${entrypoint}:${petPackId}`)
+	return { publicId, entrypoint, petPackId, sessionId, key: `${sessionId}:${publicId}` }
 }
 
 function jsonError(message, details = {}) {
@@ -124,46 +130,18 @@ function removeDatabaseFiles(db) {
 	}
 }
 
-function importRows({ db, settings, store, now, onProgress }) {
-	const conversations = store?.conversations && typeof store.conversations === "object" ? store.conversations : {}
-	const messages = store?.messages && typeof store.messages === "object" ? store.messages : {}
-	const usedIds = new Set()
-	const conversationIds = new Map()
-	let messageCount = 0
-	let settingsCount = 0
-	const at = timestampValue(now)
-
+function importRows({ db, settings, store, onProgress }) {
 	db.exec(SETTINGS_DDL + IMPORT_META_DDL)
-	const insertConversation = db.prepare("INSERT INTO ai_conversations (id, title, persona_id, created_at, updated_at, archived) VALUES (?, ?, ?, ?, ?, ?)")
-	const insertMessage = db.prepare("INSERT INTO ai_messages (id, conversation_id, role, content, token_count, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-	for (const [key, raw] of Object.entries(conversations)) {
-		const conversation = raw && typeof raw === "object" ? raw : {}
-		const id = normalizeConversationId(key, conversation, usedIds)
-		conversationIds.set(key, id)
-		const createdAt = isoOrMillis(conversation.createdAt, at)
-		const updatedAt = isoOrMillis(conversation.updatedAt, createdAt)
-		insertConversation.run(id, String(conversation.title ?? ""), conversation.personaPackId ?? conversation.personaId ?? null, createdAt, updatedAt, conversation.archived ? 1 : 0)
-	}
-	for (const [key, rawMessages] of Object.entries(messages)) {
-		const conversationId = conversationIds.get(key)
-		if (!conversationId) continue
-		for (const [index, raw] of (Array.isArray(rawMessages) ? rawMessages : []).entries()) {
-			const message = raw && typeof raw === "object" ? raw : {}
-			const content = typeof message.content === "string" ? message.content : ""
-			if (!content) continue
-			const id = typeof message.id === "string" && message.id ? message.id : `${conversationId}:message:${index}`
-			insertMessage.run(id, conversationId, String(message.role ?? "user"), content, Number.isFinite(message.tokenCount) ? message.tokenCount : null, isoOrMillis(message.createdAt, at))
-			messageCount += 1
-		}
-	}
-	if (settings && typeof settings === "object") {
-		const version = Number.isInteger(settings.version) && settings.version >= 0 ? settings.version : 0
-		const values = settings.values && typeof settings.values === "object" ? settings.values : {}
-		db.prepare("INSERT INTO settings (id, version, values_json) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET version = excluded.version, values_json = excluded.values_json").run(version, JSON.stringify(values))
+	const state = canonicalAiState(store)
+	createConversationsRepository({ db }).commitState(state)
+	let settingsCount = 0
+	if (settings) {
+		db.prepare("INSERT INTO settings (id, version, values_json) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET version = excluded.version, values_json = excluded.values_json").run(settings.version, JSON.stringify(settings.values))
 		settingsCount = 1
 	}
-	onProgress?.({ phase: "imported", percent: 100, message: `导入 ${Object.keys(conversations).length} 个对话` })
-	return { conversations: Object.keys(conversations).length, messages: messageCount, settings: settingsCount }
+	const counts = countAiState(state)
+	onProgress?.({ phase: "imported", percent: 100 })
+	return { conversations: counts.conversations, messages: counts.messages, settings: settingsCount }
 }
 
 export async function migrateFromJson({ db, userDataDir, now = () => Date.now(), logger, onProgress, force = false } = {}) {

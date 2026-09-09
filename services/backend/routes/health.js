@@ -130,6 +130,7 @@ export async function initializeBackendRuntime({ runtime, userDataDir, shell, lo
 				force: true,
 			})
 		}
+		if (deps.upgradeAiJsonStore) await deps.upgradeAiJsonStore({ db: runtime.db, userDataDir, logger })
 		runtime.jobs = deps.createJobsRepository({ db: runtime.db })
 		runtime.logs = deps.createLogsRepository({ db: runtime.db })
 		recovery = await deps.recoverJobs({

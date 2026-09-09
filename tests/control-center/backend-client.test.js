@@ -9,10 +9,10 @@ let pluginHttpApi
 let z
 
 before(async () => {
-	;([{ backendClient, configureBackendClient }, { pluginHttpApi }, { z }] = await Promise.all([
+	;([{ backendClient, configureBackendClient }, { pluginHttpApi }, z] = await Promise.all([
 		import("../../src/control-center/src/api/backend-client.ts"),
 		import("../../src/control-center/src/features/plugins/api.ts"),
-		import("zod"),
+		import("valibot"),
 	]))
 })
 

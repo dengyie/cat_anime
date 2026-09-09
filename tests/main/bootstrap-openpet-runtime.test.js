@@ -22,6 +22,7 @@ test('bootstrap runtime wires plugin install and service block-status lookups th
   const fetchCalls = []
   const fetchImpl = async (url, init = {}) => {
     fetchCalls.push({ url: String(url), method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : null })
+    if (String(url).endsWith('/ai/state')) return new Response(JSON.stringify({ ok: true, data: { config: {}, messages: [], petPackId: '' } }))
     return new Response(JSON.stringify({ ok: true, data: {
       version: 1,
       values: { ...settings, customCursorScope: 'system', petBehavior: { home: { enabled: true, anchor: { displayId: 'old-display', x: 1, y: 2 } } } }

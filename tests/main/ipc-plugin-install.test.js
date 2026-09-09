@@ -9,6 +9,7 @@ const { execFileSync } = require('child_process')
 const { IPC } = require('../../src/shared/ipc-channels')
 const { createPluginInstallService } = require('../../src/main/services/plugin-install-service')
 const { registerIpcHandlers } = require('../../src/main/ipc')
+const { createAiHttpHarness } = require('../helpers/ai-http-harness')
 
 const createSettingsService = () => {
   let current = { plugins: { enabled: {}, config: {}, storage: {}, installed: {} } }
@@ -203,7 +204,7 @@ test('ai chat handler delegates to ai talk service when available', async () => 
       }
     },
     aiService: {
-      getConfig: () => ({}),
+      getConfig: () => ({ enabled: true, hasApiKey: true, model: 'fixture' }),
       saveConfig: (config) => config,
       saveApiKey: () => ({ ok: true }),
       testConnection: () => ({ ok: true }),
@@ -217,32 +218,35 @@ test('ai chat handler delegates to ai talk service when available', async () => 
       getConversation: () => [{ role: 'assistant', content: 'hello' }],
       chat: async (payload) => {
         talkCalls.push(payload)
-        return { conversationId: 'control-center:legacy-cat:main', reply: 'talk reply', messages: [{ role: 'assistant', content: 'talk reply' }] }
+        return { requestId: payload.requestId, conversationId: 'control-center:legacy-cat:main', reply: 'talk reply', messages: [{ role: 'assistant', content: 'talk reply' }] }
       }
     },
     appLogService: { record: (entry) => appLogs.push(entry) },
     ipcMainService: ipcMain
   })
 
-  const result = await ipcMain.handlers.get(IPC.AI_CHAT)(null, { message: 'hi', conversationId: 'ignored', requestId })
-  const history = await ipcMain.handlers.get(IPC.AI_GET_CONVERSATION)(null, 'control-center')
+  const result = await ipcMain.handlers.get(IPC.PET_CHAT_SEND_MESSAGE)(null, { message: 'hi', conversationId: 'ignored', requestId })
+  const history = (await ipcMain.handlers.get(IPC.PET_CHAT_GET_STATE)()).messages
 
-  assert.deepEqual(talkCalls, [{ message: 'hi', conversationId: 'ignored', requestId }])
+  assert.deepEqual(talkCalls, [{ message: 'hi', entrypoint: 'control-center', requestId: result.requestId }])
+  assert.notEqual(result.requestId, requestId)
   assert.equal(sayCalls.length, 1)
   assert.equal(sayCalls[0].text, 'talk reply')
   assert.equal(sayCalls[0].source, 'ai')
-  assert.equal(sayCalls[0].sourceSurface, 'control-center')
-  assert.equal(sayCalls[0].requestId, requestId)
+  assert.equal(sayCalls[0].sourceSurface, 'pet-chat')
+  assert.equal(sayCalls[0].requestId, result.requestId)
   assert.equal(result.reply, 'talk reply')
   assert.equal(result.conversationId, 'control-center:legacy-cat:main')
   assert.equal(result.bubble.text, 'talk reply')
   assert.equal(result.state.petPack.id, 'legacy-cat')
-  assert.deepEqual(history, [{ role: 'assistant', content: 'hello' }])
+  assert.deepEqual(history, [{ id: '', role: 'assistant', content: 'hello', createdAt: '' }])
   assert.deepEqual(appLogs.map((entry) => entry.event), [
+    'pet-chat.message.started',
     'ai-chat.ipc.received',
     'ai-chat.bubble.dispatching',
     'ai-chat.bubble.dispatched',
-    'ai-chat.ipc.completed'
+    'ai-chat.ipc.completed',
+    'pet-chat.message.completed'
   ])
   const rawTextDetailFields = ['message', 'text', 'prompt', 'content', 'reply']
   for (const entry of appLogs) {
@@ -253,8 +257,7 @@ test('ai chat handler delegates to ai talk service when available', async () => 
   assert.equal(appLogs.at(-1).details.messageCount, 1)
 })
 
-test('ai persona profile IPC delegates to ai talk service when available', async () => {
-  const ipcMain = createIpcMainStub()
+test('ai persona profile HTTP delegates to ai talk service when available', async (t) => {
   const saveCalls = []
   const generateCalls = []
   const profile = {
@@ -269,7 +272,7 @@ test('ai persona profile IPC delegates to ai talk service when available', async
     secretValue: 'sk-hidden'
   }
 
-  registerIpcHandlers({
+  const http = await createAiHttpHarness(t, {
     ...createRequiredServices({
       pluginInstallService: {
         inspectPluginPackage: () => ({}),
@@ -299,13 +302,12 @@ test('ai persona profile IPC delegates to ai talk service when available', async
         saveCalls.push(override)
         return { ...profile, overridePersona: override, effectivePersona: { ...profile.effectivePersona, ...override } }
       }
-    },
-    ipcMainService: ipcMain
+    }
   })
 
-  const loaded = await ipcMain.handlers.get(IPC.AI_GET_PERSONA_PROFILE)()
-  const generated = await ipcMain.handlers.get(IPC.AI_GENERATE_PERSONA_DRAFT)(null, { instruction: 'make it calmer' })
-  const saved = await ipcMain.handlers.get(IPC.AI_SAVE_PERSONA_OVERRIDE)(null, { tone: 'playful' })
+  const loaded = await http('GET', '/ai/persona')
+  const generated = await http('POST', '/ai/persona/draft', { instruction: 'make it calmer' })
+  const saved = await http('PUT', '/ai/persona', { tone: 'playful' })
 
   assert.equal(loaded.petPackId, 'legacy-cat')
   assert.equal(loaded.petPackDisplayName, 'Legacy Cat')
@@ -322,8 +324,7 @@ test('ai persona profile IPC delegates to ai talk service when available', async
   assert.equal('rawProviderReply' in saved, false)
 })
 
-test('ai memory management IPC delegates to ai talk service when available', async () => {
-  const ipcMain = createIpcMainStub()
+test('ai memory management HTTP delegates to ai talk service when available', async (t) => {
   const calls = []
   const profile = {
     petPackId: 'legacy-cat',
@@ -334,7 +335,7 @@ test('ai memory management IPC delegates to ai talk service when available', asy
     secretValue: 'sk-hidden'
   }
 
-  registerIpcHandlers({
+  const http = await createAiHttpHarness(t, {
     ...createRequiredServices({
       pluginInstallService: {
         inspectPluginPackage: () => ({}),
@@ -361,13 +362,12 @@ test('ai memory management IPC delegates to ai talk service when available', asy
         calls.push(['clearPetPackMemories'])
         return { ...profile, petPackMemories: [] }
       }
-    },
-    ipcMainService: ipcMain
+    }
   })
 
-  const loaded = await ipcMain.handlers.get(IPC.AI_GET_MEMORY_PROFILE)()
-  const afterDelete = await ipcMain.handlers.get(IPC.AI_DELETE_MEMORY)(null, { memoryId: 'memory-global' })
-  const afterClear = await ipcMain.handlers.get(IPC.AI_CLEAR_PET_PACK_MEMORIES)()
+  const loaded = await http('GET', '/ai/memories')
+  const afterDelete = await http('DELETE', '/ai/memories/memory-global')
+  const afterClear = await http('DELETE', '/ai/memories')
 
   assert.equal(loaded.petPackId, 'legacy-cat')
   assert.equal(loaded.globalMemories[0].text, 'User likes focus.')
@@ -383,8 +383,7 @@ test('ai memory management IPC delegates to ai talk service when available', asy
   ])
 })
 
-test('ai talk trace export IPC delegates to ai talk service when available', async () => {
-  const ipcMain = createIpcMainStub()
+test('ai talk trace export HTTP delegates to ai talk service when available', async (t) => {
   const calls = []
   const exportedTrace = JSON.stringify({
     schemaVersion: 1,
@@ -395,7 +394,7 @@ test('ai talk trace export IPC delegates to ai talk service when available', asy
     }
   })
 
-  registerIpcHandlers({
+  const http = await createAiHttpHarness(t, {
     ...createRequiredServices({
       pluginInstallService: {
         inspectPluginPackage: () => ({}),
@@ -414,18 +413,16 @@ test('ai talk trace export IPC delegates to ai talk service when available', asy
         calls.push(payload)
         return exportedTrace
       }
-    },
-    ipcMainService: ipcMain
+    }
   })
 
-  const result = await ipcMain.handlers.get(IPC.AI_TALK_EXPORT_TRACE)(null, { conversationId: 'control-center:legacy-cat:main' })
+  const result = await http('POST', '/ai/traces/export', { conversationId: 'control-center:legacy-cat:main' })
 
   assert.equal(result, exportedTrace)
   assert.deepEqual(calls, [{ conversationId: 'control-center:legacy-cat:main' }])
 })
 
-test('ai talk trace summary IPC delegates to ai talk service when available', async () => {
-  const ipcMain = createIpcMainStub()
+test('ai talk trace summary HTTP delegates to ai talk service when available', async (t) => {
   const calls = []
   const summary = {
     traceId: 'trace:legacy',
@@ -467,7 +464,7 @@ test('ai talk trace summary IPC delegates to ai talk service when available', as
     }
   }
 
-  registerIpcHandlers({
+  const http = await createAiHttpHarness(t, {
     ...createRequiredServices({
       pluginInstallService: {
         inspectPluginPackage: () => ({}),
@@ -486,22 +483,20 @@ test('ai talk trace summary IPC delegates to ai talk service when available', as
         calls.push(payload)
         return summary
       }
-    },
-    ipcMainService: ipcMain
+    }
   })
 
-  const result = await ipcMain.handlers.get(IPC.AI_TALK_GET_TRACE_SUMMARY)(null, { conversationId: 'control-center:legacy-cat:main' })
+  const result = await http('GET', '/ai/traces?conversationId=control-center:legacy-cat:main')
 
   assert.deepEqual(result, summary)
   assert.deepEqual(calls, [{ conversationId: 'control-center:legacy-cat:main' }])
 })
 
-test('ai provider settings IPC delegates config save key save and connection test', async () => {
-  const ipcMain = createIpcMainStub()
+test('ai provider settings HTTP delegates config save key save and connection test', async (t) => {
   const calls = []
   const services = createRequiredServices({})
 
-  registerIpcHandlers({
+  const http = await createAiHttpHarness(t, {
     ...services,
     aiService: {
       ...services.aiService,
@@ -555,16 +550,15 @@ test('ai provider settings IPC delegates config save key save and connection tes
           message: 'AI provider connection test succeeded'
         }
       }
-    },
-    ipcMainService: ipcMain
+    }
   })
 
-  const config = await ipcMain.handlers.get(IPC.AI_GET_CONFIG)()
-  const savedConfig = await ipcMain.handlers.get(IPC.AI_SAVE_CONFIG)(null, { model: 'next-model' })
-  const savedKey = await ipcMain.handlers.get(IPC.AI_SAVE_API_KEY)(null, 'sk-demo-secret')
-  const savedVisionKey = await ipcMain.handlers.get(IPC.AI_SAVE_VISION_API_KEY)(null, 'sk-vision-secret')
-  const clearedVisionKey = await ipcMain.handlers.get(IPC.AI_CLEAR_VISION_API_KEY)()
-  const connection = await ipcMain.handlers.get(IPC.AI_TEST_CONNECTION)()
+  const config = await http('GET', '/ai/config')
+  const savedConfig = await http('PATCH', '/ai/config', { model: 'next-model' })
+  const savedKey = await http('PUT', '/ai/providers/ai.default/key', { apiKey: 'sk-demo-secret' })
+  const savedVisionKey = await http('PUT', '/ai/providers/ai.vision/key', { apiKey: 'sk-vision-secret' })
+  const clearedVisionKey = await http('DELETE', '/ai/providers/ai.vision/key')
+  const connection = await http('POST', '/ai/providers/chat/test')
 
   assert.deepEqual(config, {
     enabled: true,
@@ -648,9 +642,9 @@ test('ai provider settings IPC delegates config save key save and connection tes
       source: 'none'
     }
   })
-  assert.deepEqual(savedKey, { apiKeyRef: 'ai.default', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' })
-  assert.deepEqual(savedVisionKey, { apiKeyRef: 'ai.vision', hasApiKey: true, updatedAt: '2026-06-24T00:00:00.000Z' })
-  assert.deepEqual(clearedVisionKey, { apiKeyRef: 'ai.vision', hasApiKey: false })
+  assert.deepEqual(savedKey, { configured: true, maskedTail: 'masked' })
+  assert.deepEqual(savedVisionKey, { configured: true, maskedTail: 'masked' })
+  assert.deepEqual(clearedVisionKey, { configured: false, maskedTail: '' })
   assert.deepEqual(connection, {
     ok: true,
     provider: 'openai-compatible',
@@ -671,12 +665,11 @@ test('ai provider settings IPC delegates config save key save and connection tes
   ])
 })
 
-test('ai provider settings IPC delegates model discovery', async () => {
-  const ipcMain = createIpcMainStub()
+test('ai provider settings HTTP delegates model discovery', async (t) => {
   const calls = []
   const services = createRequiredServices({})
 
-  registerIpcHandlers({
+  const http = await createAiHttpHarness(t, {
     ...services,
     aiService: {
       ...services.aiService,
@@ -706,12 +699,11 @@ test('ai provider settings IPC delegates model discovery', async () => {
           message: 'Vision provider model discovery succeeded'
         }
       }
-    },
-    ipcMainService: ipcMain
+    }
   })
 
-  const result = await ipcMain.handlers.get(IPC.AI_DISCOVER_MODELS)()
-  const visionResult = await ipcMain.handlers.get(IPC.AI_DISCOVER_VISION_MODELS)()
+  const result = await http('GET', '/ai/providers/chat/models')
+  const visionResult = await http('GET', '/ai/providers/vision/models')
 
   assert.deepEqual(result, {
     ok: true,

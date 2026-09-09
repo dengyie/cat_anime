@@ -182,6 +182,8 @@ function createSidecarRuntimeCoordinator(options = {}) {
 					onCatalogRequest: options.onCatalogRequest,
 					onPetPackRequest: options.onPetPackRequest,
 					onActionsRequest: options.onActionsRequest,
+					onAiState: options.onAiState,
+					onAiHostRequest: options.onAiHostRequest,
 					})
 				const backend = { baseUrl: result.baseUrl, sessionToken: result.sessionToken }
 				publish({ status: "ready", backend, reason: null })

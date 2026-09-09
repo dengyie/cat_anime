@@ -14,7 +14,7 @@ let transportModule
 before(async () => {
 	;[clientModule, contracts, queryClientModule, settingsApiModule, transportModule] = await Promise.all([
 		import("../../src/control-center/src/api/client.ts"),
-		import("@openpet/contracts"),
+		import("../../src/shared/browser-contracts.ts"),
 		import("../../src/control-center/src/app/queryClient.ts"),
 		import("../../src/control-center/src/features/settings/api.ts"),
 		import("../../src/control-center/src/api/transport.ts"),
@@ -64,7 +64,7 @@ describe("T21 API client contract boundary", () => {
 		assert.match(request.headers.get(contracts.HEADER.idempotencyKey), /^i_/)
 		await assert.rejects(
 			api.patch({ ifVersion: -1, patch: {} }),
-			(error) => error?.name === "ZodError",
+			(error) => error?.name === "ValiError" && error.issues.length > 0,
 		)
 	})
 

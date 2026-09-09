@@ -358,18 +358,22 @@ export function createAccessLogBuffer({ max = DEFAULT_MAX_ACCESS_LOGS } = {}) {
 }
 
 /**
- * 访问日志。必须排在 errorBoundary 之后 —— 那时 finally 里才能读到最终状态码。
+ * Record after the response finishes so outer error handlers have set its status.
  *
  * 只记方法、路径、状态、耗时、客户端。**不记 body、不记 query、不记头部** ——
  * query 里可能带搜索词,头部里带 token,日志是会进诊断包的。
  */
 export function accessLog({ buffer, logger, appendHttp } = {}) {
 	return async (ctx, next) => {
-		try {
-			await next()
-		} finally {
+		let recorded = false
+		const record = () => {
+			if (recorded) return
+			recorded = true
+			ctx.res.off("finish", record)
+			ctx.res.off("close", record)
+			const at = Date.now()
 			const entry = {
-				at: new Date().toISOString(),
+				at: new Date(at).toISOString(),
 				requestId: ctx.requestId,
 				method: ctx.method,
 				path: ctx.rawPath,
@@ -379,11 +383,14 @@ export function accessLog({ buffer, logger, appendHttp } = {}) {
 			}
 			buffer?.push?.(entry)
 			try {
-				appendHttp?.({ ...entry, authorized: ctx.client !== null })
+				appendHttp?.({ ...entry, at, authorized: ctx.client !== null })
 			} catch (error) {
 				logger?.warn?.("写入 HTTP 访问日志失败", { error: String(error) })
 			}
 			if (entry.status >= 500) logger?.warn?.("请求以 5xx 结束", entry)
 		}
+		ctx.res.once("finish", record)
+		ctx.res.once("close", record)
+		await next()
 	}
 }

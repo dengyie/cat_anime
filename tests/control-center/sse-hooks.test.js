@@ -244,6 +244,6 @@ describe("T22 SSE hook seams", () => {
 		assert.equal(calls.length, 1)
 		const stopPet = manager.subscribe(["pet"], () => {}, () => {})
 		assert.equal(calls[0].signal.aborted, true)
-		stopPet(); stopSettings(); resolveRead?.()
+		stopPet(); stopSettings(); try { resolveRead?.() } catch { /* reconnect already canceled the stream */ }
 	})
 })
