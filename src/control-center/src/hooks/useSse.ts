@@ -77,7 +77,16 @@ class SseManager {
     })
   }
 
-  configure(runtime: Partial<SseRuntime>) { this.runtime = { ...this.runtime, ...runtime } }
+  configure(runtime: Partial<SseRuntime>) {
+    this.runtime = { ...this.runtime, ...runtime }
+    // A renderer can subscribe before the preload bridge has delivered the
+    // backend. Wake an in-flight unavailable/backoff loop as soon as the
+    // runtime becomes available instead of waiting for the next retry.
+    if (this.enabled && this.listeners.size > 0) {
+      this.retryIndex = 0
+      this.reconnect()
+    }
+  }
   snapshot() { return { state: this.state, lastEventId: this.lastEventId } }
 
   subscribe(topics: string[], onEvent: (event: SseEvent) => void, onState: (state: SseState) => void) {

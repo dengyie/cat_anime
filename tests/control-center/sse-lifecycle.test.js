@@ -53,3 +53,30 @@ test("SSE clean EOF uses reconnect backoff and stop cancels its timer", async (t
 	await settle()
 	assert.equal(timers.size, 0)
 })
+
+test("SSE runtime configuration wakes a subscription waiting for the backend", async (t) => {
+	let backend = null
+	let calls = 0
+	const timers = new Map()
+	const { SseManager } = await import("../../src/control-center/src/hooks/useSse.ts")
+	const manager = new SseManager()
+	manager.configure({
+		getBackend: () => backend,
+		fetchImpl: async () => {
+			calls++
+			return new Response(new ReadableStream({ start() {} }), { headers: { "content-type": "text/event-stream" } })
+		},
+		setTimeout: (callback, ms) => { const id = {}; timers.set(id, { callback, ms }); return id },
+		clearTimeout: (id) => timers.delete(id),
+	})
+	t.after(() => manager.stop())
+	const stop = manager.subscribe(["jobs"], () => {}, () => {})
+	await settle()
+	assert.equal(calls, 0)
+
+	backend = { baseUrl: "http://127.0.0.1:1234/api/v1", sessionToken: "test" }
+	manager.configure({})
+	await settle()
+	assert.equal(calls, 1)
+	stop()
+})
