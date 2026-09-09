@@ -1,10 +1,10 @@
 # 15 · IPC 通道退役台账
 
-> v1.5 · 2026-09-08 · T42 Actions · 以 `src/shared/ipc-channels.ts` 为当前清单
+> v1.6 · 2026-09-10 · T47 AI · 以 `src/shared/ipc-channels.ts` 为当前清单
 
-本台账登记当前 128 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
+本台账登记当前 99 个 IPC 常量的去向。`keep` 是 02 篇允许长期存在的窗口/原生边界；`cutover:<domain>` 表示 03 篇已有 HTTP/SSE 对等入口；`blocked:Txx` 表示等待指定任务卡完成后再切换；`retired` 表示已从当前清单删除并保留历史记录；`dead` 仅用于确认没有生产调用方的遗留常量。
 
-当前台账由 122 个 `ipcMainService.handle/on` 注册和 6 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
+当前台账由 93 个 `ipcMainService.handle/on` 注册和 6 个事件-only 通道组成。Source 列是实际生产引用文件，不是推测路径；门禁会逐项检查 TS/JS 清单、注册/事件来源、重复项和未知 `IPC.*` 引用。
 
 T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `keep ≤ 41`，因此新增的 QQ/WeCom 四个 host-secret 通道登记为 `blocked:T44`，而不是伪装成长期 keep。T41 及后续任务可把已删除常量保留为 `retired` 历史行，并在 Retired by 列记录提交 SHA；历史行不计入当前通道对账或 keep 上限。
 
@@ -12,14 +12,14 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 
 | Scope | Count |
 | --- | ---: |
-| Current IPC constants | 128 |
-| Current direct registrations | 122 |
+| Current IPC constants | 99 |
+| Current direct registrations | 93 |
 | Current event-only channels | 6 |
 | Current keep | 41 |
 | Current cutover | 29 |
-| Current blocked | 58 |
+| Current blocked | 29 |
 | Current dead | 0 |
-| Historical retired | 30 |
+| Historical retired | 59 |
 
 ## Ledger
 
@@ -89,43 +89,43 @@ T40 卡面与 T39 后的 03 篇有一处数字演进：T40 的硬上限仍为 `k
 | `pet-packs:active-changed` | `retired` | `SSE pet.pack-activated` | `control-center-preload.js` | Active-pack updates are delivered through SSE after Shell activation | 490357f7 |
 | `pet-packs:remove` | `retired` | `DELETE /pet-packs/:id` | `src/main/ipc.js` | Removal delegates to the Shell-owned Pet Pack service | 490357f7 |
 | `control-center:active-pet-pack-changed` | `retired` | `SSE pet.pack-activated` | `control-center-preload.js` | Control Center now invalidates Pet Pack state from SSE | 490357f7 |
-| `ai:get-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:save-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:save-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:save-vision-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:clear-vision-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:test-connection` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:discover-models` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:discover-vision-models` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:get-persona-profile` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:generate-persona-draft` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:save-persona-override` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:get-memory-profile` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:delete-memory` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:clear-pet-pack-memories` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-talk:get-trace-summary` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-talk:export-trace` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:get-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:save-config` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:save-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:clear-api-key` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:check-capability` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `hatch-pet-agent:get-run-status` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
+| `ai:get-config` | `retired` | `GET /ai/config` | `src/main/ipc/register-ai-ipc.js` | AI config is served by the backend AI domain | 6dc7e9f0 |
+| `ai:save-config` | `retired` | `PATCH /ai/config` | `src/main/ipc/register-ai-ipc.js` | AI config writes use the backend mutation authority | 6dc7e9f0 |
+| `ai:save-api-key` | `retired` | `PUT /ai/providers/ai.default/key` | `src/main/ipc/register-ai-ipc.js` | Provider secrets use the backend secret boundary | 6dc7e9f0 |
+| `ai:save-vision-api-key` | `retired` | `PUT /ai/providers/ai.vision/key` | `src/main/ipc/register-ai-ipc.js` | Vision secrets use the backend secret boundary | 6dc7e9f0 |
+| `ai:clear-vision-api-key` | `retired` | `DELETE /ai/providers/ai.vision/key` | `src/main/ipc/register-ai-ipc.js` | Vision secret removal uses the backend secret boundary | 6dc7e9f0 |
+| `ai:test-connection` | `retired` | `POST /ai/providers/chat/test` | `src/main/ipc/register-ai-ipc.js` | Provider probes run in the backend | 6dc7e9f0 |
+| `ai:discover-models` | `retired` | `GET /ai/providers/chat/models` | `src/main/ipc/register-ai-ipc.js` | Chat model discovery runs in the backend | 6dc7e9f0 |
+| `ai:discover-vision-models` | `retired` | `GET /ai/providers/vision/models` | `src/main/ipc/register-ai-ipc.js` | Vision model discovery runs in the backend | 6dc7e9f0 |
+| `ai:get-persona-profile` | `retired` | `GET /ai/persona` | `src/main/ipc/register-ai-ipc.js` | Persona state is served by the backend AI domain | 6dc7e9f0 |
+| `ai:generate-persona-draft` | `retired` | `POST /ai/persona/draft` | `src/main/ipc/register-ai-ipc.js` | Persona generation runs in the backend | 6dc7e9f0 |
+| `ai:save-persona-override` | `retired` | `PUT /ai/persona` | `src/main/ipc/register-ai-ipc.js` | Persona persistence uses the backend repository | 6dc7e9f0 |
+| `ai:get-memory-profile` | `retired` | `GET /ai/memories` | `src/main/ipc/register-ai-ipc.js` | Memory state is served by the backend AI domain | 6dc7e9f0 |
+| `ai:delete-memory` | `retired` | `DELETE /ai/memories/:id` | `src/main/ipc/register-ai-ipc.js` | Memory deletion uses the backend repository | 6dc7e9f0 |
+| `ai:clear-pet-pack-memories` | `retired` | `DELETE /ai/memories` | `src/main/ipc/register-ai-ipc.js` | Memory clearing uses the backend repository | 6dc7e9f0 |
+| `ai-talk:get-trace-summary` | `retired` | `GET /ai/traces` | `src/main/ipc/register-ai-ipc.js` | Trace summaries are served by the backend AI domain | 6dc7e9f0 |
+| `ai-talk:export-trace` | `retired` | `POST /ai/traces/export` | `src/main/ipc/register-ai-ipc.js` | Trace export runs in the backend | 6dc7e9f0 |
+| `hatch-pet-agent:get-config` | `retired` | `GET /ai/hatch/config` | `src/main/ipc/register-ai-ipc.js` | Hatch configuration is served by the backend AI domain | 6dc7e9f0 |
+| `hatch-pet-agent:save-config` | `retired` | `PATCH /ai/hatch/config` | `src/main/ipc/register-ai-ipc.js` | Hatch configuration writes use the backend mutation authority | 6dc7e9f0 |
+| `hatch-pet-agent:save-api-key` | `retired` | `PUT /ai/providers/ai.hatch-pet/key` | `src/main/ipc/register-ai-ipc.js` | Hatch secrets use the backend secret boundary | 6dc7e9f0 |
+| `hatch-pet-agent:clear-api-key` | `retired` | `DELETE /ai/providers/ai.hatch-pet/key` | `src/main/ipc/register-ai-ipc.js` | Hatch secret removal uses the backend secret boundary | 6dc7e9f0 |
+| `hatch-pet-agent:check-capability` | `blocked:T47` | `IPC-only (native/window)` | `src/main/ipc/register-ai-ipc.js` | Capability checks remain a native host boundary until the Hatch runtime contract is migrated | — |
+| `hatch-pet-agent:get-run-status` | `blocked:T47` | `IPC-only (native/window)` | `src/main/ipc/register-ai-ipc.js` | Run status remains a native host boundary until the Hatch runtime contract is migrated | — |
 | `image-generation:get-config` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
 | `image-generation:save-config` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
 | `image-generation:save-api-key` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
 | `image-generation:clear-api-key` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
 | `image-generation:check-health` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
 | `image-generation:discover-models` | `blocked:T46` | `Backend image-generation Job not landed` | `src/main/ipc/register-ai-ipc.js` | Image generation waits for T46 Job handler | — |
-| `ai:get-conversation` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:chat` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai:export-trace-diagnostics` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:get` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:save` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:dry-run` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:replay-decision` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:export-diagnostics` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
-| `ai-behavior:clear-decisions` | `blocked:T47` | `Backend AI domain not landed` | `src/main/ipc/register-ai-ipc.js` | AI domain waits for T47 migration | — |
+| `ai:get-conversation` | `retired` | `GET /ai/conversations?conversationId=:id` | `src/main/ipc/register-ai-ipc.js` | Conversation reads use the SQLite-backed backend repository | 6dc7e9f0 |
+| `ai:chat` | `retired` | `POST /ai/chat` | `src/main/ipc/register-ai-ipc.js` | AI chat streams through authenticated backend SSE | 6dc7e9f0 |
+| `ai:export-trace-diagnostics` | `retired` | `POST /ai/traces/diagnostics` | `src/main/ipc/register-ai-ipc.js` | Trace diagnostics export runs in the backend | 6dc7e9f0 |
+| `ai-behavior:get` | `retired` | `GET /ai/behavior` | `src/main/ipc/register-ai-ipc.js` | Behavior configuration is served by the backend AI domain | 6dc7e9f0 |
+| `ai-behavior:save` | `retired` | `PATCH /ai/behavior` | `src/main/ipc/register-ai-ipc.js` | Behavior writes use the backend mutation authority | 6dc7e9f0 |
+| `ai-behavior:dry-run` | `retired` | `POST /ai/behavior/dry-run` | `src/main/ipc/register-ai-ipc.js` | Behavior dry runs execute in the backend | 6dc7e9f0 |
+| `ai-behavior:replay-decision` | `retired` | `POST /ai/behavior/replay` | `src/main/ipc/register-ai-ipc.js` | Behavior replay executes in the backend | 6dc7e9f0 |
+| `ai-behavior:export-diagnostics` | `retired` | `POST /ai/behavior/diagnostics` | `src/main/ipc/register-ai-ipc.js` | Behavior diagnostics export runs in the backend | 6dc7e9f0 |
+| `ai-behavior:clear-decisions` | `retired` | `DELETE /ai/behavior/decisions` | `src/main/ipc/register-ai-ipc.js` | Behavior decision cleanup uses the backend repository | 6dc7e9f0 |
 | `plugins:list` | `cutover:plugins` | `GET /plugins` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
 | `plugins:set-enabled` | `cutover:plugins` | `POST /plugins/:id/enable` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
 | `plugins:set-native-execution-approved` | `cutover:plugins` | `POST /plugins/:id/native-approval` | `src/main/ipc/register-plugin-ipc.js` | Existing backend route is the migration target | — |
