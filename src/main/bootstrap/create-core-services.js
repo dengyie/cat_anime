@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const { safeStorage } = require('electron')
+const { createAiSidecarProxy } = require('../ai-sidecar-proxy')
 
 const createCoreServices = ({
   app,
@@ -8,6 +9,9 @@ const createCoreServices = ({
   settingsRuntime,
   factories,
   screen,
+  getBackend,
+  fetchImpl,
+  onAiSnapshot,
   onSystemCursorUnexpectedExit = () => {}
 }) => {
   const {
@@ -17,14 +21,9 @@ const createCoreServices = ({
     createPetPackService,
     createPetService,
     createSecretService,
-    createAiService,
-    createAiTalkStore,
-    createAiTalkService,
-    createPetUtteranceLogService,
     createImageGenerationModelService,
     createTriggerRuleRuntimeService,
     createCreatorReferenceService,
-    createBehaviorOrchestratorService,
     createLocalHttpService,
     createActionImportService,
     createCursorAssetService,
@@ -62,17 +61,14 @@ const createCoreServices = ({
     logDir: path.join(app.getPath('userData'), 'logs')
   })
   const petService = createPetService({ eventBus, settingsService, actionService, appLogService })
-  const aiService = createAiService({ settingsService, secretService, appLogService })
-  const aiTalkStore = createAiTalkStore({ storePath: path.join(app.getPath('userData'), 'ai-talk-store.json') })
-  const petUtteranceLogService = createPetUtteranceLogService({ aiTalkStore, appLogService })
-  const aiTalkService = createAiTalkService({ aiService, aiTalkStore, petPackService, appLogService, petUtteranceLogService })
+  const aiSidecar = createAiSidecarProxy({ getBackend, fetchImpl, onSnapshot: onAiSnapshot, getActivePetPackId: () => petPackService.getActivePetPack()?.manifest?.id || '' })
+  const { aiService, aiTalkService, petUtteranceLogService, behaviorOrchestratorService } = aiSidecar
   const imageGenerationModelService = createImageGenerationModelService({ settingsService, secretService, appLogService })
   const triggerRuleRuntimeService = createTriggerRuleRuntimeService({ actionService, petService, appLogService })
   const creatorReferenceService = createCreatorReferenceService({
     settingsService,
     referenceRoot: path.join(app.getPath('userData'), 'creator-references')
   })
-  const behaviorOrchestratorService = createBehaviorOrchestratorService({ settingsService })
   const localHttpService = createLocalHttpService({ petService, settingsService })
   const petMovementPolicy = createPetMovementPolicy({ screen })
   const createLegacyActionImportService = () => createActionImportService({
@@ -130,7 +126,7 @@ const createCoreServices = ({
       actionService,
       aiService,
       aiTalkService,
-      aiTalkStore,
+      aiSidecar,
       appLogService,
       behaviorOrchestratorService,
       cursorAssetService,

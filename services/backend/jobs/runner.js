@@ -144,6 +144,7 @@ export function createRunner({
 
 	function createJobProgress(record) {
 		const persist = (frame) => {
+			if (record.canceled || record.interrupted) return
 			record.phase = frame.phase ?? null
 			repo.setProgress(record.jobId, frame)
 			repo.appendEvent?.(record.jobId, frame)
@@ -159,7 +160,10 @@ export function createRunner({
 		if (typeof handler !== "function") {
 			const error = new ApiError("INTERNAL", "Job handler 不存在", { details: { kind: job.kind } })
 			repo.finish(job.id, { status: "failed", error: jobError(error) })
-			queue.release(job.id)
+			const nextJob = queue.release(job.id)
+			if (nextJob) void execute(nextJob).catch((nextError) => {
+				logger?.error?.("后续 Job 执行失败", { jobId: nextJob.id, error: String(nextError) })
+			})
 			throw error
 		}
 
@@ -190,8 +194,14 @@ export function createRunner({
 				return processHandle
 			},
 			async finalize(writeFinalArtifact) {
+				if (record.canceled || record.interrupted || record.controller.signal.aborted) {
+					throw Object.assign(new Error("Job 已取消"), { code: "JOB_CANCELED", retryable: false })
+				}
 				jobProgress.report({ phase: "finalizing", percent: 100 })
 				jobProgress.flush()
+				if (record.canceled || record.interrupted || record.controller.signal.aborted) {
+					throw Object.assign(new Error("Job 已取消"), { code: "JOB_CANCELED", retryable: false })
+				}
 				return typeof writeFinalArtifact === "function" ? await writeFinalArtifact() : undefined
 			},
 		}
@@ -244,6 +254,9 @@ export function createRunner({
 		if (!selected) return null
 		const current = typeof selected === "string" ? repo.byId(selected) : selected
 		if (!current) throw new ApiError("NOT_FOUND", "Job 不存在", { details: { jobId: selected } })
+		if (active.has(current.id)) {
+			throw new ApiError("CONFLICT", "Job 已由当前 runner 执行", { details: { jobId: current.id } })
+		}
 		if (current.status !== "running") {
 			throw new ApiError("CONFLICT", "runner 只接受 running Job", {
 				details: { jobId: current.id, status: current.status },

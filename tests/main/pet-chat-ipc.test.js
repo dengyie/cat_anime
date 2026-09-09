@@ -1077,9 +1077,10 @@ test('pet pack activation notifies control center and desktop chat with refreshe
   assert.equal(backendNotifications[0].payload.petChatState.petPack.displayName, 'Mochi Cat')
 })
 
-test('ai talk trace export IPC includes behavior decisions through ai talk service', async () => {
+test('ai talk trace export HTTP includes backend behavior decisions', async (t) => {
+  const { createAiHttpHarness } = require('../helpers/ai-http-harness')
   const exportCalls = []
-  const ipcMain = registerPetChatHandlers({
+  const http = await createAiHttpHarness(t, {
     aiTalkService: {
       getConversation: () => [],
       getPersonaProfile: () => ({ petPackId: 'legacy-cat', petPackDisplayName: 'Legacy Cat' }),
@@ -1098,7 +1099,7 @@ test('ai talk trace export IPC includes behavior decisions through ai talk servi
     }
   })
 
-  const exported = JSON.parse(await ipcMain.handlers.get(IPC.AI_EXPORT_TRACE_DIAGNOSTICS)())
+  const exported = JSON.parse(await http('POST', '/ai/traces/diagnostics', {}))
 
   assert.deepEqual(exported, { ok: true, behaviorCount: 1 })
   assert.equal(exportCalls[0].behaviorDecisions[0].id, 7)

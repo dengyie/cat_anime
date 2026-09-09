@@ -111,7 +111,7 @@ describe("T14 JSON → SQLite", () => {
 		const dbFile = path.join(userDataDir, "backend", "openpet.db")
 		fs.writeFileSync(path.join(userDataDir, "ai-talk-store.json"), JSON.stringify({ conversations: { one: { id: "one" }, two: { id: "two" } }, messages: { one: [{ id: "same", role: "user", content: "a" }], two: [{ id: "same", role: "user", content: "b" }] } }))
 		const db = await openFile(userDataDir)
-		await assert.rejects(() => migration.migrateFromJson({ db, userDataDir, now: () => "2026-08-21T02:03:04.000Z" }), /UNIQUE|constraint/i)
+		await assert.rejects(() => migration.migrateFromJson({ db, userDataDir, now: () => "2026-08-21T02:03:04.000Z", onProgress: () => { throw new Error("simulated import failure") } }), /simulated import failure/)
 		assert.equal(fs.existsSync(dbFile), false)
 		assert.equal(fs.readdirSync(userDataDir).filter((entry) => entry.startsWith(migration.BACKUP_DIR_PREFIX)).length, 1)
 		fs.rmSync(userDataDir, { recursive: true, force: true })

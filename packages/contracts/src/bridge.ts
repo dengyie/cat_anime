@@ -99,6 +99,12 @@ export const backendToShellSchema = z.discriminatedUnion("type", [
     operation: z.enum(PET_PACK_BRIDGE_OPERATIONS),
     payload: z.record(z.string(), z.unknown()),
   }).strict(),
+  z.object({ type: z.literal("ai.state"), snapshot: z.record(z.string(), z.unknown()) }).strict(),
+  z.object({
+    type: z.literal("ai.host.request"),
+    operation: z.enum(["context", "present"]),
+    payload: z.record(z.string(), z.unknown()),
+  }).strict(),
 ])
 export type BackendToShell = z.infer<typeof backendToShellSchema>
 export const actionsRequestSchema = backendToShellSchema.options[0]
@@ -159,6 +165,7 @@ export const shellToBackendSchema = z.discriminatedUnion("type", [
     payload: z.record(z.string(), z.unknown()),
   }).strict(),
   z.object({ type: z.literal("pet.command.result"), ok: z.boolean(), result: z.unknown().optional(), error: z.string().optional() }).strict(),
+  z.object({ type: z.literal("ai.host.result"), operation: z.enum(["context", "present"]), ok: z.boolean(), result: z.unknown().optional(), error: z.string().optional() }).strict(),
 ])
 export type ShellToBackend = z.infer<typeof shellToBackendSchema>
 

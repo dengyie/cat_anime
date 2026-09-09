@@ -24,14 +24,9 @@ const { createActionService } = require('./src/main/services/action-service')
 const { createPetPackService } = require('./src/main/services/pet-pack-service')
 const { createPetService } = require('./src/main/services/pet-service')
 const { createSecretService } = require('./src/main/services/secret-service')
-const { createAiService } = require('./src/main/services/ai-service')
-const { createAiTalkStore } = require('./src/main/services/ai-talk-store')
-const { createAiTalkService } = require('./src/main/services/ai-talk-service')
-const { createPetUtteranceLogService } = require('./src/main/services/pet-utterance-log-service')
 const { createImageGenerationModelService } = require('./src/main/services/image-generation-model-service')
 const { createTriggerRuleRuntimeService } = require('./src/main/services/trigger-rule-runtime-service')
 const { createCreatorReferenceService } = require('./src/main/services/creator-reference-service')
-const { createBehaviorOrchestratorService } = require('./src/main/services/behavior-orchestrator-service')
 const { createCreatorStudioDefaultFlowService } = require('./src/main/services/creator-studio-default-flow-service')
 const { createCreatorWorkflowService } = require('./src/main/services/creator-workflow-service')
 const { createHatchPetAgentService } = require('./src/main/services/hatch-pet-agent-service')
@@ -109,14 +104,9 @@ const bootstrapOpenPet = () => {
       createPetPackService,
       createPetService,
       createSecretService,
-      createAiService,
-      createAiTalkStore,
-      createAiTalkService,
-      createPetUtteranceLogService,
       createImageGenerationModelService,
       createTriggerRuleRuntimeService,
       createCreatorReferenceService,
-      createBehaviorOrchestratorService,
       createCreatorStudioDefaultFlowService,
       createCreatorWorkflowService,
       createHatchPetAgentService,

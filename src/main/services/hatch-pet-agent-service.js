@@ -306,14 +306,15 @@ const createHatchPetAgentService = ({
   aiService,
   settingsService,
   secretService,
+  configuration = null,
   pluginService,
   appLogService = null,
   idFactory = () => crypto.randomUUID(),
   now = () => new Date().toISOString()
 } = {}) => {
   if (!aiService?.completeStructuredTool) throw new Error('AiService structured completion is required')
-  if (!settingsService?.get || !settingsService?.update) throw new Error('SettingsService is required')
-  if (!secretService?.getSecretValue || !secretService?.setSecret) throw new Error('SecretService is required')
+  if (!configuration && (!settingsService?.get || !settingsService?.update)) throw new Error('SettingsService is required')
+  if (!configuration && (!secretService?.getSecretValue || !secretService?.setSecret)) throw new Error('SecretService is required')
   if (!pluginService?.getPluginCreatorDataDir) throw new Error('PluginService Creator data directory is required')
   const liveProviderReservations = new Set()
   const reservationKey = (runId, reservationId) => `${String(runId || '')}:${String(reservationId || '')}`
@@ -331,6 +332,7 @@ const createHatchPetAgentService = ({
   }
 
   const getStoredAiConfig = () => {
+    if (configuration) return configuration.getAiConfig()
     const settings = settingsService.get()
     return isPlainObject(settings.ai) ? settings.ai : {}
   }
@@ -353,10 +355,12 @@ const createHatchPetAgentService = ({
   }
 
   const hasEffectiveApiKey = (completionConfig = getEffectiveCompletionConfig()) => {
+    if (configuration) return configuration.getConfig().hasApiKey === true
     return Boolean(secretService.getSecretValue(completionConfig.apiKeyRef))
   }
 
   const getConfig = () => {
+    if (configuration) return configuration.getConfig()
     const aiConfig = getStoredAiConfig()
     const stored = getStoredConfig(aiConfig)
     const effective = getEffectiveCompletionConfig(aiConfig)
@@ -415,6 +419,7 @@ const createHatchPetAgentService = ({
   }
 
   const saveConfig = (partialConfig = {}) => {
+    if (configuration) return configuration.saveConfig(partialConfig)
     settingsService.update((settings) => {
       const currentAi = isPlainObject(settings.ai) ? settings.ai : {}
       const currentConfig = normalizeStoredConfig(currentAi.hatchPet)
@@ -460,6 +465,7 @@ const createHatchPetAgentService = ({
   }
 
   const saveApiKey = (value) => {
+    if (configuration) return configuration.saveApiKey(value)
     const apiKey = String(value || '').trim()
     if (!apiKey) throw new Error('Hatch-pet API Key 不能为空')
     secretService.setSecret({ id: HATCH_PET_API_KEY_REF, value: apiKey, label: 'Hatch Pet Agent API Key' })
@@ -471,6 +477,7 @@ const createHatchPetAgentService = ({
   }
 
   const clearApiKey = () => {
+    if (configuration) return configuration.clearApiKey()
     secretService.deleteSecret?.(HATCH_PET_API_KEY_REF)
     return {
       apiKeyRef: HATCH_PET_API_KEY_REF,
@@ -675,7 +682,7 @@ const createHatchPetAgentService = ({
     const config = getStoredConfig()
     if (!config.enabled) throw new Error('Hatch-pet agent is disabled')
     const completionConfig = getEffectiveCompletionConfig()
-    if (!secretService.getSecretValue(completionConfig.apiKeyRef)) throw new Error('Hatch-pet API key is not configured')
+    if (!hasEffectiveApiKey(completionConfig)) throw new Error('Hatch-pet API key is not configured')
     const dataDir = pluginService.getPluginCreatorDataDir(CREATOR_STUDIO_PLUGIN_ID)
     const root = path.resolve(String(dataDir || ''))
     const boardPath = path.resolve(String(board?.path || ''))
@@ -763,7 +770,7 @@ const createHatchPetAgentService = ({
     const config = getStoredConfig()
     if (!config.enabled) throw new Error('Hatch-pet agent is disabled')
     const completionConfig = getEffectiveCompletionConfig()
-    if (!secretService.getSecretValue(completionConfig.apiKeyRef)) throw new Error('Hatch-pet API key is not configured')
+    if (!hasEffectiveApiKey(completionConfig)) throw new Error('Hatch-pet API key is not configured')
     let ledger = resolveBudgetLedger({ runId, supplied: budgetLedger, limits: config.budgets })
     let repairReason = ''
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -848,7 +855,7 @@ const createHatchPetAgentService = ({
     const legalDecisions = createLegalDecisions({ mode, stage })
     try {
       const completionConfig = getEffectiveCompletionConfig()
-      if (!secretService.getSecretValue(completionConfig.apiKeyRef)) {
+      if (!hasEffectiveApiKey(completionConfig)) {
         throw new Error('Hatch-pet API key is not configured')
       }
       store = createStore()

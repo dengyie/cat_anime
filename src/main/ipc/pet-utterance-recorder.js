@@ -13,10 +13,10 @@ const createPetUtteranceRecorder = ({
     }
   }
 
-  const recordPetUtterance = (payload = {}) => {
+  const recordPetUtterance = async (payload = {}) => {
     if (!petUtteranceLogService?.record) return null
     try {
-      return petUtteranceLogService.record({
+      return await petUtteranceLogService.record({
         petPackId: getActivePetPackId(),
         text: payload.text || payload.message || '',
         source: payload.source || '',

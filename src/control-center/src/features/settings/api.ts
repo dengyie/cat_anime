@@ -2,15 +2,15 @@ import {
   settingsEnvelopeSchema,
   settingsPatchRequestSchema,
   settingsPatchResponseSchema,
-} from '@openpet/contracts'
-import type { z } from 'zod'
+} from '../../../../shared/browser-contracts.ts'
+import type * as v from 'valibot'
 
 import type { ApiClient } from '../../api/client.ts'
 import { cloneSettings, defaultSettings } from '../../lib/defaults.ts'
 import type { ControlCenterSettings } from '../../../../shared/openpet-contracts.ts'
 
-export type SettingsSnapshot = z.infer<typeof settingsEnvelopeSchema>
-export type SettingsPatch = z.infer<typeof settingsPatchRequestSchema>
+export type SettingsSnapshot = v.InferOutput<typeof settingsEnvelopeSchema>
+export type SettingsPatch = v.InferOutput<typeof settingsPatchRequestSchema>
 
 export function shouldAcceptSettingsSnapshot({ requestSequence, latestRequestSequence, snapshotVersion, acceptedVersion }: {
   requestSequence: number
@@ -25,7 +25,7 @@ export function shouldAcceptSettingsSnapshot({ requestSequence, latestRequestSeq
 
 type SettingsApi = {
   get: () => Promise<SettingsSnapshot>
-  patch: (body: SettingsPatch) => Promise<z.infer<typeof settingsPatchResponseSchema>>
+  patch: (body: SettingsPatch) => Promise<v.InferOutput<typeof settingsPatchResponseSchema>>
 }
 
 const has = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key)
@@ -173,7 +173,7 @@ function getPathValue(value: Record<string, unknown>, path: string) {
 }
 
 export async function saveSettingsWithRetry({ api, base, previousView, nextView }: {
-  api: { get: () => Promise<SettingsSnapshot>; patch: (body: SettingsPatch) => Promise<z.infer<typeof settingsPatchResponseSchema>> }
+  api: { get: () => Promise<SettingsSnapshot>; patch: (body: SettingsPatch) => Promise<v.InferOutput<typeof settingsPatchResponseSchema>> }
   base: SettingsSnapshot
   previousView: Partial<ControlCenterSettings>
   nextView: Partial<ControlCenterSettings>
@@ -203,7 +203,7 @@ export function createSettingsApi(client: ApiClient, fallback: SettingsApi = dem
         responseSchema: settingsEnvelopeSchema,
       })
     },
-    patch(body: SettingsPatch): Promise<z.infer<typeof settingsPatchResponseSchema>> {
+    patch(body: SettingsPatch): Promise<v.InferOutput<typeof settingsPatchResponseSchema>> {
       if (useDemoFallback()) return fallback.patch(body)
       return client.request({
         method: 'PATCH',

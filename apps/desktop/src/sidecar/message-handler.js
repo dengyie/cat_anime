@@ -53,6 +53,8 @@ const BACKEND_TO_SHELL_TYPES = Object.freeze([
 	"secrets.persist.request",
 	"catalog.request",
 	"pet-packs.request",
+	"ai.state",
+	"ai.host.request",
 ])
 
 const PET_PACK_OPERATIONS = Object.freeze([
@@ -106,6 +108,12 @@ function parseEnvelope(raw) {
 	if (!BACKEND_TO_SHELL_TYPES.includes(body.type)) return fail("unknown-type", body.type)
 
 	switch (body.type) {
+		case "ai.state":
+			if (!body.snapshot || typeof body.snapshot !== "object" || Array.isArray(body.snapshot)) return fail("bad-body", "ai.state")
+			break
+		case "ai.host.request":
+			if (!["context", "present"].includes(body.operation) || !body.payload || typeof body.payload !== "object" || Array.isArray(body.payload)) return fail("bad-body", "ai.host.request")
+			break
 		case "actions.request":
 			if (typeof body.operation !== "string" || body.payload === null || typeof body.payload !== "object" || Array.isArray(body.payload)) return fail("bad-body", "actions.request")
 			break
@@ -165,7 +173,7 @@ function parseEnvelope(raw) {
 	return { ok: true, envelope: { v: raw.v, id: raw.id, at: raw.at, body: normalizedBody } }
 }
 
-function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, onPetPackRequest, onActionsRequest, productionService } = {}) {
+function createMessageHandler({ dialog, petService, secretService, logger, send, onNotify, onBadge, onDashboard, onSettingsChanged, onSettingsApplyRequest, onCatalogRequest, onPetPackRequest, onActionsRequest, onAiState, onAiHostRequest, productionService } = {}) {
 	if (typeof send !== "function") throw new TypeError("createMessageHandler 需要 send")
 
 	async function handle(raw) {
@@ -178,6 +186,18 @@ function createMessageHandler({ dialog, petService, secretService, logger, send,
 
 		try {
 			switch (body.type) {
+				case "ai.state":
+					onAiState?.(structuredClone(body.snapshot))
+					return true
+				case "ai.host.request": {
+					let response
+					try {
+						if (!onAiHostRequest) throw new Error("AI host effects are unavailable")
+						response = { ok: true, result: await onAiHostRequest({ operation: body.operation, payload: structuredClone(body.payload) }) }
+					} catch (error) { response = { ok: false, error: error?.message || "AI host request failed" } }
+					send({ v: 1, id: raw.id, at: Date.now(), body: { type: "ai.host.result", operation: body.operation, ...response } })
+					return true
+				}
 				case "pet-packs.request": {
 					let responseBody
 					try {

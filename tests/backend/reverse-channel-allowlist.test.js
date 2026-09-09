@@ -28,6 +28,8 @@ const EXPECTED_BACKEND_TO_SHELL_TYPES = [
 	"secrets.persist.request",
 	"catalog.request",
 	"pet-packs.request",
+	"ai.state",
+	"ai.host.request",
 ]
 
 function envelope(type, body = {}) {
@@ -49,13 +51,13 @@ function contractBackendToShellTypes() {
 }
 
 	describe("T28 reverse-channel allowlist", () => {
-	it("keeps the Backend and Shell allowlists exactly aligned with the 17 contract types", async () => {
+	it("keeps the Backend and Shell allowlists exactly aligned with the 19 contract types", async () => {
 		const backendSchema = await import("../../services/backend/bridge/message-schema.js")
 
 		assert.deepEqual(contractBackendToShellTypes(), EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(backendSchema.BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
 		assert.deepEqual(SHELL_BACKEND_TO_SHELL_TYPES, EXPECTED_BACKEND_TO_SHELL_TYPES)
-		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 17)
+		assert.equal(new Set(SHELL_BACKEND_TO_SHELL_TYPES).size, 19)
 	})
 
 	it("drops malformed and non-allowlisted envelopes and logs each rejection", async () => {

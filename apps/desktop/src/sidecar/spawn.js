@@ -20,11 +20,8 @@ const MAX_VERSION_MISMATCH_RELAUNCHES = 2
 const BRIDGE_PROTOCOL_VERSION = 1
 
 /**
- * 解析 sidecar 入口。路径策略与 spike 5 验过的一致:app.getAppPath() 在打包后
- * 指向 app.asar 内部,ADR-004 让 sidecar 就住在同一个 asar 里,不需要 unpack。
- *
- * ⚠️ 但 ESM loader 从 asar 内解析入口这一步 spike 5 没有覆盖,
- * 详见 services/backend/README.md「已知待验证风险」。
+ * ESM resolves the entry and its dependency graph from the unpacked tree.
+ * Keep package.json's asarUnpack list aligned with backend runtime imports.
  */
 function resolveSidecarEntry(app) {
 	if (!app || typeof app.getAppPath !== "function") {

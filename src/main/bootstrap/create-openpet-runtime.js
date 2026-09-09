@@ -60,6 +60,9 @@ const createOpenPetRuntime = ({
     settingsRuntime,
     factories,
     screen,
+    getBackend: () => sidecarRuntimeCoordinator.getBackend(),
+    fetchImpl,
+    onAiSnapshot: () => ipcRuntimeHelpers.refreshAiState?.(),
     onSystemCursorUnexpectedExit: (event) => handleSystemCursorUnexpectedExit(event)
   })
   const {
@@ -68,6 +71,7 @@ const createOpenPetRuntime = ({
       actionService,
       aiService,
       aiTalkService,
+      aiSidecar,
       appLogService,
       behaviorOrchestratorService,
       cursorAssetService,
@@ -166,6 +170,15 @@ const createOpenPetRuntime = ({
     },
     onPetPackRequest: (request) => ipcRuntimeHelpers.handlePetPackRequest(request),
     onActionsRequest: (request) => ipcRuntimeHelpers.handleActionsRequest(request),
+    onAiState: (snapshot) => aiSidecar.receive(snapshot),
+    onAiHostRequest: ({ operation, payload }) => {
+      if (operation === 'context') return {
+        pack: petPackService.getActivePetPack(),
+        actions: petService.getAnimations()?.actions || []
+      }
+      if (operation === 'present') return ipcRuntimeHelpers.presentAiChatResult(payload.result, payload.context)
+      throw new Error('Unsupported AI host operation')
+    },
     onReady: async () => {
       try {
         await settingsSidecarBridge?.hydrate()
@@ -176,6 +189,7 @@ const createOpenPetRuntime = ({
         })
       }
       await flushDeferredSettingsPersistence()
+      await aiSidecar.hydrate()
     },
     productionService: async (request) => {
       const pluginId = String(request?.pluginId || '').trim()
@@ -251,6 +265,7 @@ const createOpenPetRuntime = ({
   })
 
   sidecarRuntimeCoordinator.onChanged?.((backend) => {
+    aiSidecar.reset()
     const settingsWindow = getPetWindow()?.settingsWindow
     if (settingsWindow && !settingsWindow.isDestroyed?.()) {
       settingsWindow.webContents?.send?.(IPC.SETTINGS_CHANGED, {
@@ -366,9 +381,8 @@ const createOpenPetRuntime = ({
     })
   })
   const hatchPetAgentService = factories.createHatchPetAgentService({
-    aiService,
-    settingsService,
-    secretService,
+    aiService: aiSidecar.hatchAiService,
+    configuration: aiSidecar.hatchConfiguration,
     pluginService,
     appLogService
   })

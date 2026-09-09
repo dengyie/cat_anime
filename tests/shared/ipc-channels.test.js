@@ -27,22 +27,12 @@ test('shared IPC contract exports stable frozen channel names', () => {
   assert.equal(IPC.PET_BUBBLE_CHAT_OPEN, 'pet-bubble-chat:open')
   assert.equal(IPC.PET_BUBBLE_CHAT_SHOW_MESSAGE, 'pet-bubble-chat:show-message')
   assert.equal(IPC.PET_BUBBLE_CHAT_SET_HIT_TEST_MODE, 'pet-bubble-chat:set-hit-test-mode')
-  assert.equal(IPC.AI_GENERATE_PERSONA_DRAFT, 'ai:generate-persona-draft')
-  assert.equal(IPC.AI_GET_MEMORY_PROFILE, 'ai:get-memory-profile')
-  assert.equal(IPC.AI_DELETE_MEMORY, 'ai:delete-memory')
-  assert.equal(IPC.AI_CLEAR_PET_PACK_MEMORIES, 'ai:clear-pet-pack-memories')
+  assert.deepEqual(Object.keys(IPC).filter((key) => key.startsWith('AI_')), [])
+  for (const key of ['HATCH_PET_AGENT_GET_CONFIG', 'HATCH_PET_AGENT_SAVE_CONFIG', 'HATCH_PET_AGENT_SAVE_API_KEY', 'HATCH_PET_AGENT_CLEAR_API_KEY']) assert.equal(IPC[key], undefined)
   assert.deepEqual([
-    IPC.HATCH_PET_AGENT_GET_CONFIG,
-    IPC.HATCH_PET_AGENT_SAVE_CONFIG,
-    IPC.HATCH_PET_AGENT_SAVE_API_KEY,
-    IPC.HATCH_PET_AGENT_CLEAR_API_KEY,
     IPC.HATCH_PET_AGENT_CHECK_CAPABILITY,
     IPC.HATCH_PET_AGENT_GET_RUN_STATUS
   ], [
-    'hatch-pet-agent:get-config',
-    'hatch-pet-agent:save-config',
-    'hatch-pet-agent:save-api-key',
-    'hatch-pet-agent:clear-api-key',
     'hatch-pet-agent:check-capability',
     'hatch-pet-agent:get-run-status'
   ])

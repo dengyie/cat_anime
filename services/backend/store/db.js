@@ -4,8 +4,8 @@
 // 只需在本文件里换一个实现(better-sqlite3),repositories/ 与 jobs/ 一行不改。
 // 所以这个接口故意只有 5 个方法,不抽象成 ORM。
 
-import { mkdirSync } from "node:fs"
-import { dirname } from "node:path"
+import { existsSync, mkdirSync, realpathSync } from "node:fs"
+import { basename, dirname, join, resolve } from "node:path"
 
 export const NODE_SQLITE_UNAVAILABLE = "NODE_SQLITE_UNAVAILABLE"
 
@@ -55,16 +55,26 @@ export async function openDatabase({ file, pragmas = DEFAULT_PRAGMAS, logger } =
 	}
 
 	mkdirSync(dirname(file), { recursive: true })
-
+	// Recheck after the async module load, using the physical path: concurrent
+	// calls and symlink aliases must not open two writers in this process.
+	const resolved = resolve(file)
+	const fileKey = file === ":memory:" ? file
+		: existsSync(resolved) ? realpathSync(resolved) : join(realpathSync(dirname(resolved)), basename(resolved))
+	if (openFiles.has(fileKey)) throw new Error("违反单写者原则(ADR-007):" + file + " 已在本进程打开")
 	const raw = new DatabaseSync(file)
-	for (const pragma of pragmas) raw.exec("PRAGMA " + pragma + ";")
-	openFiles.add(file)
+	try {
+		for (const pragma of pragmas) raw.exec("PRAGMA " + pragma + ";")
+	} catch (error) {
+		raw.close()
+		throw error
+	}
+	openFiles.add(fileKey)
 	logger?.info?.("SQLite 已打开", { file, pragmas })
 
-	return createDriver({ raw, file, logger })
+	return createDriver({ raw, file, fileKey, logger })
 }
 
-function createDriver({ raw, file, logger }) {
+function createDriver({ raw, file, fileKey, logger }) {
 	let depth = 0
 	let closed = false
 
@@ -101,8 +111,9 @@ function createDriver({ raw, file, logger }) {
 		 */
 		transaction(fn) {
 			assertOpen()
-			const isOuter = depth === 0
-			const savepoint = "sp_" + depth
+			const entryDepth = depth
+			const isOuter = entryDepth === 0
+			const savepoint = "sp_" + entryDepth
 			raw.exec(isOuter ? "BEGIN IMMEDIATE;" : "SAVEPOINT " + savepoint + ";")
 			depth += 1
 			try {
@@ -110,17 +121,19 @@ function createDriver({ raw, file, logger }) {
 				if (result !== null && typeof result?.then === "function") {
 					throw new Error("transaction(fn) 只接受同步回调,不能传 async 函数")
 				}
-				depth -= 1
 				raw.exec(isOuter ? "COMMIT;" : "RELEASE " + savepoint + ";")
 				return result
 			} catch (error) {
-				depth -= 1
 				try {
-					raw.exec(isOuter ? "ROLLBACK;" : "ROLLBACK TO " + savepoint + ";")
+					raw.exec(isOuter ? "ROLLBACK;" : "ROLLBACK TO " + savepoint + "; RELEASE " + savepoint + ";")
 				} catch (rollbackError) {
 					logger?.error?.("回滚失败", { file, error: String(rollbackError) })
 				}
 				throw error
+			} finally {
+				// COMMIT can fail too (for example, deferred foreign keys). Restore
+				// depth once, regardless of whether fn or COMMIT threw.
+				depth = entryDepth
 			}
 		},
 
@@ -131,9 +144,9 @@ function createDriver({ raw, file, logger }) {
 
 		close() {
 			if (closed) return
-			closed = true
-			openFiles.delete(file)
 			raw.close()
+			closed = true
+			openFiles.delete(fileKey)
 			logger?.info?.("SQLite 已关闭", { file })
 		},
 	}

@@ -1,4 +1,5 @@
 export const IMPLEMENTED_API_ROUTES = Object.freeze([
+	...AI_RUNTIME_ROUTES,
 	"GET /health",
 	"GET /service/status",
 	"POST /service/enable",
@@ -90,6 +91,7 @@ export function registeredImplementedRoutes() {
 	registerServiceRoutes(router, { manager: service })
 	registerAiSecretRoutes(router, { secrets: service })
 	registerAiRoutes(router, { jobs: { insert: noop } })
+	registerAiRuntimeRoutes(router, { getDomain: () => service })
 	registerAboutRoutes(router, { about: { info: noop }, jobs: { insert: noop } })
 	registerSettingsRoutes({ router, store: { read: noop, patch: () => ({ version: 0, changedPaths: [] }) } })
 	registerActionRoutes(router, { actions })
@@ -110,3 +112,4 @@ import { registerServiceRoutes } from "./service.js"
 import { registerSettingsRoutes } from "./settings.js"
 import { registerPluginRoutes } from "./plugins.js"
 import { registerAiSecretRoutes, registerAiRoutes } from "./ai.js"
+import { AI_RUNTIME_ROUTES, registerAiRuntimeRoutes } from "./ai-runtime.js"

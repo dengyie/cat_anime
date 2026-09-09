@@ -1,6 +1,6 @@
 # 03 · API 契约与通信协议
 
-> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 128 个 IPC 通道的去向已在本篇逐域定义。
+> 🔌 本篇是前后端并行开发的唯一依据。契约未定稿前不得开始写业务代码。当前 99 个 IPC 通道的去向已在本篇逐域定义。
 
 ## 1. 协议基础
 
@@ -96,7 +96,7 @@
 
 **专用业务码**(搭配 400/409/423):`PLUGIN_MANIFEST_INVALID`、`PLUGIN_ALREADY_RUNNING`、`PLUGIN_NATIVE_NOT_APPROVED`、`PET_PACK_INCOMPATIBLE`、`ACTION_FRAMES_MISSING`、`AI_KEY_NOT_CONFIGURED`、`JOB_NOT_CANCELABLE`、`MIGRATION_REQUIRED`。
 
-## 3. 128 个通道的去向总表
+## 3. 99 个通道的去向总表
 
 | 域 | 通道数 | 留 IPC | 迁 HTTP | 备注 |
 | --- | --- | --- | --- | --- |
@@ -106,15 +106,15 @@
 | `SETTINGS_*` | 5 | 2 | 3 | `OPEN`/`CLOSE` 留(开窗); `GET`/`SAVE` 已在 T41 退役 |
 | `ACTIONS_*` | 1 | 1 | 0 | 仅 `INSPECT_FRAMES` 保留原生弹框；12 个业务通道退休，Control Center 通过 Backend HTTP |
 | `PET_PACKS_*` | 1 | 1 | 0 | 仅 `INSPECT_DIRECTORY` 保留原生弹框；其余 8 个通道已在 T42 同一提交退休 |
-| AI 总域 | 37 | 0 | 37 | 全迁 |
+| AI 总域 | 8 | 0 | 8 | 29 个对话、配置、记忆与行为通道已在 T47 退役；剩余图像和 Creator 操作随 T48 收口 |
 | `PLUGINS_*` | 29 | 6 | 23 | `OPEN_DASHBOARD`、`INSPECT_PACKAGE`、QQ/WeCom 凭据保存/清除留 |
 | `CREATOR_*` | 13 | 0 | 13 | 多数转 Job |
 | `SERVICE_*` | 7 | 0 | 7 | 全迁 |
 | `ABOUT_*` | 0 | 0 | 0 | `about:get-info` / `about:check-updates` 已在 T42 退休；能力改由 Backend HTTP/Job 提供 |
 | `CATALOG_*` | 0 | 0 | 0 | 6 个 Catalog 通道已在 T42 同一提交中退休；HTTP 路由仍由 Backend 提供 |
-| **合计** | **128** | **45** | **83** | |
+| **合计** | **99** | **45** | **54** | |
 
-> **实现登记（T42 Actions）**：本表只统计当前 IPC 通道；后端支撑模块不会另增 IPC 通道。Actions 的 12 个业务通道已由 `/actions*` HTTP 路由承接；原生选目录仍由 Shell IPC 处理，`actions.import-frames` 通过共享 Jobs runner 执行并以 `pet.actions-changed` SSE 发布变更。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**128 = 45 留 IPC + 83 迁 HTTP**。
+> **实现登记（T47 AI）**：本表只统计当前 IPC 通道。AI 对话通过 HTTP/SSE 进入后端，历史由 SQLite 保存；孵化配置和密钥也由后端统一写入。Actions 的 12 个业务通道已由 `/actions*` HTTP 路由承接。`check:api-contract` 以 `src/shared/ipc-channels.ts` 为清单逐项复算：**99 = 45 留 IPC + 54 迁 HTTP**。
 
 ## 4. 路由表
 
@@ -193,24 +193,40 @@
 
 本表 7 条路由；Pet Pack 的 9 个历史通道中仅 `pet-packs:inspect-directory` 留在 IPC，其余 8 个已在 T42 同一提交退休。`pet-packs:active-changed` 与 `control-center:active-pet-pack-changed` 是事件通道，迁移后由 SSE `pet.pack-activated` 承担。
 
-### 4.6 AI(37 个通道全迁)
+### 4.6 AI
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/ai/config` | 不含密钥明文 |
+| GET | `/ai/state` | 当前宠物的只读配置、人设和会话快照 |
 | PATCH | `/ai/config` | 部分更新 |
 | PUT | `/ai/providers/{id}/key` | **只写**,返 `{ configured, maskedTail }` |
 | DELETE | `/ai/providers/{id}/key` | 清除 |
 | POST | `/ai/providers/{id}/test` | 连接测试,15s 超时 |
 | GET | `/ai/providers/{id}/models` | 模型目录 |
 | GET · PUT | `/ai/persona` | 人设 |
+| POST | `/ai/persona/draft` | 生成人设草稿 |
 | GET · POST · DELETE | `/ai/memories` · `/{id}` | 记忆 |
+| DELETE | `/ai/memories` | 清空当前宠物记忆 |
 | POST | `/ai/chat` | **SSE 流式**(`Accept: text/event-stream`) |
+| POST | `/ai/chat/{id}/cancel` | 取消活动或排队的对话请求 |
 | GET · DELETE | `/ai/conversations` · `/{id}` | 对话 |
+| GET | `/ai/conversations/{id}` | 指定会话消息 |
 | POST | `/ai/talk/start` · `/ai/talk/stop` | 主动搭话 |
-| GET · POST · PATCH · DELETE | `/ai/behavior/rules` | 行为规则 |
+| GET · POST | `/ai/behavior/rules` | 行为规则列表与创建 |
+| PATCH · DELETE | `/ai/behavior/rules/{id}` | 行为规则更新与删除 |
+| GET · PATCH | `/ai/behavior` | 行为配置 |
 | POST | `/ai/behavior/dry-run` | 干跑 |
+| POST | `/ai/behavior/evaluate` | 行为决策 |
+| POST | `/ai/behavior/replay` | 决策重放 |
+| POST | `/ai/behavior/diagnostics` | 导出行为诊断 |
+| DELETE | `/ai/behavior/decisions` | 清空行为决策 |
 | GET · POST | `/ai/traces` · `/ai/traces/export` | 诊断 |
+| POST | `/ai/traces/diagnostics` | 导出筛选后的 AI 诊断 |
+| POST | `/ai/utterances` | 记录 PetService 已呈现的话语 |
+| POST | `/ai/entrypoints/chat` | 插件等入口的对话 |
+| POST | `/ai/completions` | 后端按能力解析配置；拒绝调用方 configOverride、密钥引用与 signal 字段 |
+| GET · PATCH | `/ai/hatch/config` | 孵化设置与有效模型；固定 ai.hatch-pet 密钥引用 |
 | GET · POST | `/ai/hatch/agents` · `/ai/hatch/start` | 孵化 → **Job** |
 | GET | `/ai/hatch/budget` | 预算账本 |
 | POST | `/ai/images/generate` | → **Job**(265s) |
@@ -391,6 +407,8 @@ data: {"jobId":"job_01H...","kind":"image.generate","phase":"rendering","percent
 type Envelope<T> = { v: 1; id: string; at: number; body: T }
 
 type BackendToShell =
+  | { type: "ai.state"; snapshot: Record<string, unknown> }
+  | { type: "ai.host.request"; operation: "context" | "present"; payload: Record<string, unknown> }
   | { type: "actions.request"; operation: ActionsBridgeOperation; payload: Record<string, unknown> }
   | { type: "pet.say"; text: string; durationMs?: number }
   | { type: "pet.playAction"; actionId: string; loop?: boolean }
@@ -405,6 +423,7 @@ type BackendToShell =
   | { type: "settings.persist.result"; version: number; ok: boolean; changedPaths: string[]; error?: string; errorCode?: string }
 
 type ShellToBackend =
+  | { type: "ai.host.result"; operation: "context" | "present"; ok: boolean; result?: unknown; error?: string }
   | { type: "actions.result"; operation: ActionsBridgeOperation; ok: boolean; result?: unknown; error?: { code: ErrorCode; message: string } }
   | { type: "init"; userDataPath: string; sessionToken: string; logLevel: string }
   | { type: "shutdown"; graceMs: number }
@@ -416,6 +435,9 @@ type ShellToBackend =
 ```
 
 `ActionsBridgeOperation` 与 `ErrorCode` 引用 `@openpet/contracts` 的单一契约。Actions 回复必须匹配请求的 envelope id、消息类型和 operation；成功必须含 result，失败必须含结构化错误。未知操作和额外请求字段在进入 Shell 服务前拒绝。
+
+AI 后端通过 `context` 获取活动宠物包，通过 `present` 请求 Shell 的 PetService 呈现回复。
+已取消或属于其他宠物包的结果不会呈现；`ai.state` 只发送不含密钥值的配置、历史和人设快照。
 
 `settings.persist.request` 是仅供 Shell 使用的进程内持久化边界，当前只允许
 `petBehavior.home.anchor`。HTTP `PATCH /settings` 对该路径一律返回 `403`，不接受
